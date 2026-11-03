@@ -1,26 +1,13 @@
+
 """
 Lector de identificadores de contenedores y unidades de transporte.
-Lee de una foto:
-  - Códigos ISO 6346 (4 letras + 6 dígitos + dígito de control), en una
-    línea o en dos (propietario arriba, número de serie abajo). Si el
-    dígito de control no está pintado, lo calcula y lo marca como calculado.
-  - Números de unidad compuestos solo por dígitos (p. ej. 242012 o 11342),
-    en horizontal o apilados en vertical.
-
-Modos (--modo):
-  iso       solo códigos ISO 6346
-  numerico  solo números de unidad
-  auto      prueba ISO y numérico (por defecto)
-
-Uso:
-    python lector_contenedores.py
-    python lector_contenedores.py foto.png --modo auto
-    python lector_contenedores.py foto.png --detalle --debug
+Lee códigos ISO 6346, números de unidad e identificadores alfanuméricos.
 """
 
 import argparse
 import os
 import re
+import shutil
 from pathlib import Path
 
 # Tesseract con varios hilos es más lento en imágenes pequeñas.
@@ -30,15 +17,33 @@ import cv2
 import numpy as np
 import pytesseract
 
-pytesseract.pytesseract.tesseract_cmd = (
-    r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+
+# ============================================================
+# CONFIGURACIÓN DE TESSERACT (WINDOWS Y RENDER)
+# ============================================================
+
+TESSERACT_WINDOWS = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+
+TESSERACT_CMD = (
+    shutil.which("tesseract")
+    or (
+        TESSERACT_WINDOWS
+        if Path(TESSERACT_WINDOWS).exists()
+        else "tesseract"
+    )
 )
 
-# CONFIGURACIÓN
-TESSERACT_CMD = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+pytesseract.pytesseract.tesseract_cmd = TESSERACT_CMD
 
-if Path(TESSERACT_CMD).exists():
-    pytesseract.pytesseract.tesseract_cmd = TESSERACT_CMD
+print(
+    f">>> TESSERACT CONFIGURADO EN: {TESSERACT_CMD}",
+    flush=True
+)
+
+
+# ============================================================
+# CONFIGURACIÓN GENERAL
+# ============================================================
 
 RUTA_POR_DEFECTO = Path(__file__).resolve().parent / "Imagen3.png"
 
@@ -46,36 +51,38 @@ LETRAS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 DIGITOS = "0123456789"
 ALFANUMERICO = LETRAS + DIGITOS
 
-# ISO 6346: 4 letras (propietario + categoría) + 6 dígitos + 1 de control.
 PATRON_ISO = re.compile(r"[A-Z]{4}[0-9]{7}")
 PATRON_SIN_CONTROL = re.compile(r"[A-Z]{4}[0-9]{6}")
 PATRON_PARCIAL = re.compile(r"[A-Z]{4}[0-9]{1,6}")
 
-# Confianza mínima (0-100) para aceptar un código con formato ISO.
 CONFIANZA_MIN_ISO = 50
 
-# Valores de las letras para el dígito de control (se saltan 11, 22 y 33).
 VALORES_LETRAS = dict(zip(
     LETRAS,
     [10, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 23, 24,
      25, 26, 27, 28, 29, 30, 31, 32, 34, 35, 36, 37, 38],
 ))
 
-# Confusiones típicas del OCR según el tipo de carácter esperado.
-A_DIGITO = {"O": "0", "Q": "0", "D": "0", "I": "1", "L": "1", "Z": "2",
-            "S": "5", "B": "8", "G": "6", "A": "4", "T": "7"}
-A_LETRA = {"0": "O", "1": "I", "2": "Z", "5": "S", "8": "B", "6": "G",
-           "4": "A", "7": "T"}
+A_DIGITO = {
+    "O": "0", "Q": "0", "D": "0", "I": "1", "L": "1",
+    "Z": "2", "S": "5", "B": "8", "G": "6", "A": "4", "T": "7"
+}
+
+A_LETRA = {
+    "0": "O", "1": "I", "2": "Z", "5": "S",
+    "8": "B", "6": "G", "4": "A", "7": "T"
+}
 
 
+# ============================================================
 # UTILIDADES
+# ============================================================
+
 def limpiar_texto(texto):
-    """Conserva únicamente letras mayúsculas y números."""
     return re.sub(r"[^A-Z0-9]", "", texto.upper())
 
 
 def leer_imagen(ruta):
-    """Lee la imagen aunque la ruta tenga acentos (problema típico en Windows)."""
     try:
         datos = np.fromfile(str(ruta), dtype=np.uint8)
         return cv2.imdecode(datos, cv2.IMREAD_COLOR)
@@ -84,7 +91,6 @@ def leer_imagen(ruta):
 
 
 def ajustar_a_tipo(caracter, permitidos):
-    """Fuerza un carácter a dígito o letra según lo esperado (o None)."""
     if permitidos == "digitos":
         caracter = A_DIGITO.get(caracter, caracter)
         return caracter if caracter.isdigit() else None
@@ -96,39 +102,46 @@ def ajustar_a_tipo(caracter, permitidos):
     return caracter
 
 
+# ============================================================
 # VALIDACIÓN ISO 6346
+# ============================================================
+
 def calcular_digito_control(base10):
-    """Dígito de control para las primeras 10 posiciones."""
     suma = 0
+
     for posicion, caracter in enumerate(base10):
-        valor = int(caracter) if caracter.isdigit() else VALORES_LETRAS[caracter]
+        valor = (
+            int(caracter)
+            if caracter.isdigit()
+            else VALORES_LETRAS[caracter]
+        )
         suma += valor * (2 ** posicion)
+
     return (suma % 11) % 10
 
 
 def validar_iso6346(codigo):
     if not PATRON_ISO.fullmatch(codigo):
         return False
+
     return calcular_digito_control(codigo[:10]) == int(codigo[10])
 
 
 def corregir_iso(ventana):
-    """Corrige confusiones por posición: letras en 0-3, dígitos después."""
     letras = "".join(
-        A_LETRA.get(c, c) if c.isdigit() else c for c in ventana[:4]
+        A_LETRA.get(c, c) if c.isdigit() else c
+        for c in ventana[:4]
     )
+
     digitos = "".join(
-        A_DIGITO.get(c, c) if c.isalpha() else c for c in ventana[4:]
+        A_DIGITO.get(c, c) if c.isalpha() else c
+        for c in ventana[4:]
     )
+
     return letras + digitos
 
 
 def buscar_iso(texto):
-    """
-    Recorre el texto con una ventana de 11 caracteres.
-    Devuelve (codigo, valido). Si ninguno valida, devuelve el primer
-    candidato con formato correcto y valido=False.
-    """
     primero_invalido = None
 
     for i in range(len(texto) - 10):
@@ -147,7 +160,6 @@ def buscar_iso(texto):
 
 
 def buscar_sin_control(texto):
-    """Busca 4 letras + 6 dígitos (código sin el dígito de control)."""
     for i in range(len(texto) - 9):
         candidato = corregir_iso(texto[i:i + 10])
 
@@ -157,15 +169,18 @@ def buscar_sin_control(texto):
     return None
 
 
+# ============================================================
 # PREPARACIÓN DE IMÁGENES
+# ============================================================
+
 def a_grises(imagen):
     if imagen.ndim == 3:
         return cv2.cvtColor(imagen, cv2.COLOR_BGR2GRAY)
+
     return imagen.copy()
 
 
 def ajustar_tamano(gris, objetivo=1400, maximo=2200):
-    """Amplía lo pequeño y reduce lo enorme (Tesseract se vuelve lento)."""
     mayor = max(gris.shape)
 
     if mayor < objetivo:
@@ -175,25 +190,36 @@ def ajustar_tamano(gris, objetivo=1400, maximo=2200):
     else:
         return gris
 
-    return cv2.resize(gris, None, fx=factor, fy=factor, interpolation=metodo)
+    return cv2.resize(
+        gris,
+        None,
+        fx=factor,
+        fy=factor,
+        interpolation=metodo
+    )
 
 
 def normalizar_iluminacion(gris):
-    """Divide entre el fondo desenfocado: elimina reflejos y degradados."""
     sigma = max(gris.shape) / 10
     fondo = cv2.GaussianBlur(gris, (0, 0), sigma)
+
     return cv2.divide(gris, fondo, scale=255)
 
 
 def binarizar_otsu(gris):
-    """Otsu con texto oscuro sobre fondo blanco (usa el borde para decidir)."""
     _, binaria = cv2.threshold(
-        gris, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+        gris,
+        0,
+        255,
+        cv2.THRESH_BINARY + cv2.THRESH_OTSU
     )
 
-    borde = np.concatenate(
-        [binaria[0, :], binaria[-1, :], binaria[:, 0], binaria[:, -1]]
-    )
+    borde = np.concatenate([
+        binaria[0, :],
+        binaria[-1, :],
+        binaria[:, 0],
+        binaria[:, -1]
+    ])
 
     if borde.mean() < 127:
         binaria = cv2.bitwise_not(binaria)
@@ -202,13 +228,21 @@ def binarizar_otsu(gris):
 
 
 def generar_variantes(gris):
-    """Variantes de la imagen para el OCR por líneas."""
     norm = normalizar_iluminacion(gris)
     norm_inv = normalizar_iluminacion(cv2.bitwise_not(gris))
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(gris)
+
+    clahe = cv2.createCLAHE(
+        clipLimit=2.0,
+        tileGridSize=(8, 8)
+    ).apply(gris)
+
     adaptativa = cv2.adaptiveThreshold(
-        norm, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY, 41, 12,
+        norm,
+        255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY,
+        41,
+        12,
     )
 
     return [
@@ -222,19 +256,29 @@ def generar_variantes(gris):
 
 def generar_orientaciones(imagen):
     yield "0 grados", imagen
-    yield "90 grados horario", cv2.rotate(imagen, cv2.ROTATE_90_CLOCKWISE)
+    yield "90 grados horario", cv2.rotate(
+        imagen, cv2.ROTATE_90_CLOCKWISE
+    )
     yield "90 grados antihorario", cv2.rotate(
         imagen, cv2.ROTATE_90_COUNTERCLOCKWISE
     )
-    yield "180 grados", cv2.rotate(imagen, cv2.ROTATE_180)
+    yield "180 grados", cv2.rotate(
+        imagen, cv2.ROTATE_180
+    )
 
 
-# OCR POR LÍNEAS (plan B, más lento y menos preciso)
+# ============================================================
+# OCR POR LÍNEAS
+# ============================================================
+
 def ocr_linea(imagen, psm):
-    """Devuelve (texto, confianza media) con la línea o bloque reconocido."""
     borde = int(np.median(imagen))
+
     imagen = cv2.copyMakeBorder(
-        imagen, 20, 20, 20, 20, cv2.BORDER_CONSTANT, value=borde
+        imagen,
+        20, 20, 20, 20,
+        cv2.BORDER_CONSTANT,
+        value=borde
     )
 
     config = (
@@ -243,7 +287,9 @@ def ocr_linea(imagen, psm):
     )
 
     datos = pytesseract.image_to_data(
-        imagen, config=config, output_type=pytesseract.Output.DICT
+        imagen,
+        config=config,
+        output_type=pytesseract.Output.DICT
     )
 
     palabras, confianzas = [], []
@@ -260,19 +306,27 @@ def ocr_linea(imagen, psm):
             palabras.append(texto)
             confianzas.append(confianza)
 
-    media = sum(confianzas) / len(confianzas) if confianzas else 0.0
+    media = (
+        sum(confianzas) / len(confianzas)
+        if confianzas
+        else 0.0
+    )
+
     return "".join(palabras), media
 
 
+# ============================================================
 # SEGMENTACIÓN CARÁCTER POR CARÁCTER
-# (dígitos apilados en vertical, en una fila o en dos líneas)
+# ============================================================
+
 def detectar_cajas(norm):
-    """Encuentra contornos con tamaño y forma de carácter."""
     binaria = binarizar_otsu(norm)
-    mascara = cv2.bitwise_not(binaria)  # texto en blanco
+    mascara = cv2.bitwise_not(binaria)
 
     contornos, _ = cv2.findContours(
-        mascara, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        mascara,
+        cv2.RETR_EXTERNAL,
+        cv2.CHAIN_APPROX_SIMPLE
     )
 
     alto_img, ancho_img = norm.shape
@@ -292,12 +346,8 @@ def detectar_cajas(norm):
 
     return cajas
 
+
 def agrupar_alineadas(cajas):
-    """
-    Busca el grupo más grande de cajas de altura parecida y alineadas
-    en una fila (horizontal) o en una columna (vertical). Descarta el
-    resto: logos, herrajes, manchas.
-    """
     mejor, mejor_orientacion = [], "horizontal"
 
     for x, y, w, h in cajas:
@@ -319,7 +369,8 @@ def agrupar_alineadas(cajas):
                     grupo.append((x2, y2, w2, h2))
 
             if len(grupo) > len(mejor):
-                mejor, mejor_orientacion = grupo, orientacion
+                mejor = grupo
+                mejor_orientacion = orientacion
 
     indice = 1 if mejor_orientacion == "vertical" else 0
     mejor.sort(key=lambda caja: caja[indice])
@@ -328,19 +379,18 @@ def agrupar_alineadas(cajas):
 
 
 def centro_y(grupo):
-    return sum(y + h / 2 for _, y, _, h in grupo) / len(grupo)
+    return sum(
+        y + h / 2
+        for _, y, _, h in grupo
+    ) / len(grupo)
 
 
 def buscar_segundo_grupo(cajas, grupo):
-    """
-    Busca una segunda fila de caracteres justo arriba o abajo del grupo
-    principal (propietario sobre número de serie, como en muchos
-    contenedores). Debe tener altura parecida y solaparse en horizontal.
-    """
     alturas = sorted(c[3] for c in grupo)
     h_med = alturas[len(alturas) // 2]
 
     usadas = set(grupo)
+
     resto = [
         c for c in cajas
         if c not in usadas and 0.7 <= c[3] / h_med <= 1.3
@@ -353,6 +403,7 @@ def buscar_segundo_grupo(cajas, grupo):
 
     g_x0 = min(c[0] for c in grupo)
     g_x1 = max(c[0] + c[2] for c in grupo)
+
     c_x0 = min(c[0] for c in candidato)
     c_x1 = max(c[0] + c[2] for c in candidato)
 
@@ -366,11 +417,12 @@ def buscar_segundo_grupo(cajas, grupo):
     return candidato
 
 
-def reconocer_caracter(norm, caja, permitidos="alnum", alturas=(80,)):
-    """
-    Lee un único carácter. Con varias alturas hace una pequeña votación.
-    Devuelve (caracter o None, confianza).
-    """
+def reconocer_caracter(
+    norm,
+    caja,
+    permitidos="alnum",
+    alturas=(80,)
+):
     x, y, w, h = caja
     margen = max(2, int(h * 0.04))
 
@@ -382,20 +434,33 @@ def reconocer_caracter(norm, caja, permitidos="alnum", alturas=(80,)):
     if base.size == 0:
         return None, 0.0
 
-    lista = {"digitos": DIGITOS, "letras": LETRAS}.get(permitidos, ALFANUMERICO)
+    lista = {
+        "digitos": DIGITOS,
+        "letras": LETRAS
+    }.get(permitidos, ALFANUMERICO)
+
     votos = {}
 
     for alto in alturas:
         escala = alto / base.shape[0]
+
         recorte = cv2.resize(
-            base, None, fx=escala, fy=escala, interpolation=cv2.INTER_CUBIC
-        )
-        recorte = binarizar_otsu(recorte)
-        recorte = cv2.copyMakeBorder(
-            recorte, 25, 25, 25, 25, cv2.BORDER_CONSTANT, value=255
+            base,
+            None,
+            fx=escala,
+            fy=escala,
+            interpolation=cv2.INTER_CUBIC
         )
 
-        # PSM 10 = un carácter; 8 = una palabra; 13 = línea cruda.
+        recorte = binarizar_otsu(recorte)
+
+        recorte = cv2.copyMakeBorder(
+            recorte,
+            25, 25, 25, 25,
+            cv2.BORDER_CONSTANT,
+            value=255
+        )
+
         for psm in (10, 8, 13):
             config = (
                 f"--oem 3 --psm {psm} "
@@ -403,12 +468,17 @@ def reconocer_caracter(norm, caja, permitidos="alnum", alturas=(80,)):
             )
 
             datos = pytesseract.image_to_data(
-                recorte, config=config, output_type=pytesseract.Output.DICT
+                recorte,
+                config=config,
+                output_type=pytesseract.Output.DICT
             )
 
             leido = None
 
-            for texto, confianza in zip(datos["text"], datos["conf"]):
+            for texto, confianza in zip(
+                datos["text"],
+                datos["conf"]
+            ):
                 texto = limpiar_texto(texto)
 
                 try:
@@ -417,7 +487,10 @@ def reconocer_caracter(norm, caja, permitidos="alnum", alturas=(80,)):
                     continue
 
                 if texto and confianza >= 0:
-                    caracter = ajustar_a_tipo(texto[0], permitidos)
+                    caracter = ajustar_a_tipo(
+                        texto[0],
+                        permitidos
+                    )
 
                     if caracter:
                         leido = (caracter, confianza)
@@ -431,40 +504,49 @@ def reconocer_caracter(norm, caja, permitidos="alnum", alturas=(80,)):
         return None, 0.0
 
     ganador = max(votos, key=lambda c: sum(votos[c]))
-    return ganador, sum(votos[ganador]) / len(votos[ganador])
+
+    return (
+        ganador,
+        sum(votos[ganador]) / len(votos[ganador])
+    )
 
 
 def hay_hueco(grupo, orientacion):
-    """
-    Detecta un carácter que no se segmentó: la distancia entre centros
-    contiguos sería casi el doble de lo normal. Así se evita entregar,
-    por ejemplo, 24212 en lugar de 242012.
-    """
     if len(grupo) < 4:
         return False
 
     indice = 1 if orientacion == "vertical" else 0
     tam = 3 if orientacion == "vertical" else 2
-    centros = [c[indice] + c[tam] / 2 for c in grupo]
-    pasos = [b - a for a, b in zip(centros, centros[1:])]
+
+    centros = [
+        c[indice] + c[tam] / 2
+        for c in grupo
+    ]
+
+    pasos = [
+        b - a
+        for a, b in zip(centros, centros[1:])
+    ]
+
     paso_tipico = sorted(pasos)[len(pasos) // 2]
 
-    return paso_tipico > 0 and max(pasos) > 1.7 * paso_tipico
+    return (
+        paso_tipico > 0
+        and max(pasos) > 1.7 * paso_tipico
+    )
 
 
 def leer_grupo(norm, grupo, orientacion="horizontal"):
-    """
-    Lee un grupo de caracteres. Si son casi todos dígitos (o letras),
-    los vuelve a leer forzando ese tipo, que es mucho más preciso.
-    Devuelve (texto, [confianzas]) o None si algún carácter es ilegible
-    o falta alguno en la segmentación.
-    """
-    # Un ISO en una fila (10-11 caracteres) puede llevar un espacio
-    # legítimo antes del dígito de control; el resto no debe tener huecos.
-    if len(grupo) not in (10, 11) and hay_hueco(grupo, orientacion):
+    if len(grupo) not in (10, 11) and hay_hueco(
+        grupo,
+        orientacion
+    ):
         return None
 
-    primera = [reconocer_caracter(norm, caja) for caja in grupo]
+    primera = [
+        reconocer_caracter(norm, caja)
+        for caja in grupo
+    ]
 
     if any(c is None for c, _ in primera):
         return None
@@ -473,8 +555,6 @@ def leer_grupo(norm, grupo, orientacion="horizontal"):
     n = len(texto)
     tipo = "alnum"
 
-    # Con 10 u 11 caracteres puede ser un ISO en una fila (mezcla de
-    # letras y dígitos): se corrige por posición más adelante.
     if n not in (10, 11):
         if sum(c.isdigit() for c in texto) >= 0.6 * n:
             tipo = "digitos"
@@ -487,68 +567,106 @@ def leer_grupo(norm, grupo, orientacion="horizontal"):
     resultado = []
 
     for caja, (car1, conf1) in zip(grupo, primera):
-        car2, conf2 = reconocer_caracter(norm, caja, tipo, alturas=(64, 100))
-        resultado.append((car2, conf2) if car2 else (car1, conf1))
+        car2, conf2 = reconocer_caracter(
+            norm,
+            caja,
+            tipo,
+            alturas=(64, 100)
+        )
+
+        resultado.append(
+            (car2, conf2) if car2 else (car1, conf1)
+        )
 
     return (
         "".join(c for c, _ in resultado),
-        [conf for _, conf in resultado],
+        [conf for _, conf in resultado]
     )
 
 
 def guardar_debug(norm, cajas, grupo, ruta):
-    """Guarda la imagen con las cajas: rojo = candidatas, verde = elegidas."""
     vista = cv2.cvtColor(norm, cv2.COLOR_GRAY2BGR)
 
     for x, y, w, h in cajas:
-        cv2.rectangle(vista, (x, y), (x + w, y + h), (0, 0, 255), 1)
+        cv2.rectangle(
+            vista,
+            (x, y),
+            (x + w, y + h),
+            (0, 0, 255),
+            1
+        )
 
     for x, y, w, h in grupo:
-        cv2.rectangle(vista, (x, y), (x + w, y + h), (0, 200, 0), 3)
+        cv2.rectangle(
+            vista,
+            (x, y),
+            (x + w, y + h),
+            (0, 200, 0),
+            3
+        )
 
     cv2.imwrite(str(ruta), vista)
 
 
 def angulo_de_inclinacion(grupo, orientacion):
-    """
-    Ángulo (grados, convención de cv2.getRotationMatrix2D) que hay que
-    girar la imagen para enderezar la fila o columna de caracteres.
-    """
     if len(grupo) < 3:
         return 0.0
 
-    xs = np.array([x + w / 2 for x, _, w, _ in grupo], dtype=float)
-    ys = np.array([y + h / 2 for _, y, _, h in grupo], dtype=float)
+    xs = np.array(
+        [x + w / 2 for x, _, w, _ in grupo],
+        dtype=float
+    )
+
+    ys = np.array(
+        [y + h / 2 for _, y, _, h in grupo],
+        dtype=float
+    )
 
     if orientacion == "vertical":
-        pendiente = np.polyfit(ys, xs, 1)[0]   # x en función de y
+        pendiente = np.polyfit(ys, xs, 1)[0]
         return -float(np.degrees(np.arctan(pendiente)))
 
-    pendiente = np.polyfit(xs, ys, 1)[0]       # y en función de x
+    pendiente = np.polyfit(xs, ys, 1)[0]
+
     return float(np.degrees(np.arctan(pendiente)))
 
 
-def leer_por_segmentacion(gris, ruta_debug=None, enderezar=True):
-    """
-    Devuelve (texto, confianza media, descripcion, n_caracteres).
-    Si algún carácter es ilegible devuelve texto vacío, para no
-    entregar una lectura con caracteres omitidos.
-    """
+def leer_por_segmentacion(
+    gris,
+    ruta_debug=None,
+    enderezar=True
+):
     norm = normalizar_iluminacion(gris)
     cajas = detectar_cajas(norm)
     grupo, orientacion = agrupar_alineadas(cajas)
 
-    # Si el texto está inclinado, se endereza la imagen y se repite una vez.
     if enderezar and len(grupo) >= 3:
-        angulo = angulo_de_inclinacion(grupo, orientacion)
+        angulo = angulo_de_inclinacion(
+            grupo,
+            orientacion
+        )
 
         if 1.5 < abs(angulo) < 20:
             alto, ancho = gris.shape
-            matriz = cv2.getRotationMatrix2D((ancho / 2, alto / 2), angulo, 1.0)
-            derecha = cv2.warpAffine(
-                gris, matriz, (ancho, alto), borderMode=cv2.BORDER_REPLICATE
+
+            matriz = cv2.getRotationMatrix2D(
+                (ancho / 2, alto / 2),
+                angulo,
+                1.0
             )
-            return leer_por_segmentacion(derecha, ruta_debug, enderezar=False)
+
+            derecha = cv2.warpAffine(
+                gris,
+                matriz,
+                (ancho, alto),
+                borderMode=cv2.BORDER_REPLICATE
+            )
+
+            return leer_por_segmentacion(
+                derecha,
+                ruta_debug,
+                enderezar=False
+            )
 
     grupos = [grupo]
     descripcion = orientacion
@@ -560,12 +678,14 @@ def leer_por_segmentacion(gris, ruta_debug=None, enderezar=True):
             grupos.append(segundo)
             descripcion = "horizontal en 2 lineas"
 
-    # De arriba hacia abajo: propietario primero, número de serie después.
     grupos.sort(key=centro_y if grupo else None)
 
     if ruta_debug is not None:
         guardar_debug(
-            norm, cajas, [caja for g in grupos for caja in g], ruta_debug
+            norm,
+            cajas,
+            [caja for g in grupos for caja in g],
+            ruta_debug
         )
 
     total = sum(len(g) for g in grupos)
@@ -585,9 +705,14 @@ def leer_por_segmentacion(gris, ruta_debug=None, enderezar=True):
         confianzas.extend(lectura[1])
 
     media = sum(confianzas) / len(confianzas)
+
     return "".join(textos), media, descripcion, total
 
+
+# ============================================================
 # EVALUACIÓN DE CANDIDATOS
+# ============================================================
+
 def crear_candidato(tipo, valor, confianza, puntaje, fuente):
     return {
         "tipo": tipo,
@@ -600,32 +725,39 @@ def crear_candidato(tipo, valor, confianza, puntaje, fuente):
 
 
 def analizar(texto, confianza, modo, fuente):
-    """Convierte un texto reconocido en un candidato, o None."""
     texto = limpiar_texto(texto)
 
     if not texto:
         return None
 
-    # Con confianza baja un dígito de control "válido" puede ser pura
-    # casualidad (1 de cada 10 textos al azar lo cumple): no se acepta.
     if modo in ("iso", "auto") and confianza >= CONFIANZA_MIN_ISO:
         codigo, valido = buscar_iso(texto)
 
         if codigo and valido:
-            return crear_candidato("iso_valido", codigo, confianza, 1000, fuente)
+            return crear_candidato(
+                "iso_valido", codigo, confianza, 1000, fuente
+            )
 
         if codigo:
             return crear_candidato(
-                "iso_invalido", codigo, confianza, 500 + confianza / 10, fuente
+                "iso_invalido",
+                codigo,
+                confianza,
+                500 + confianza / 10,
+                fuente
             )
 
         sin_control = buscar_sin_control(texto)
 
         if sin_control:
             base = 700 if fuente == "segmentacion" else 200
+
             return crear_candidato(
-                "iso_sin_control", sin_control, confianza,
-                base + confianza / 10, fuente,
+                "iso_sin_control",
+                sin_control,
+                confianza,
+                base + confianza / 10,
+                fuente
             )
 
     if modo in ("iso", "auto"):
@@ -633,23 +765,27 @@ def analizar(texto, confianza, modo, fuente):
 
         if parcial and confianza >= 20:
             return crear_candidato(
-                "parcial", parcial.group(0), confianza, 100 + confianza, fuente
+                "parcial",
+                parcial.group(0),
+                confianza,
+                100 + confianza,
+                fuente
             )
 
-    
-    # Los números de unidad solo se aceptan desde la segmentación y deben
-    # ser dígitos puros.
     if modo in ("numerico", "auto") and fuente == "segmentacion":
-        if confianza >= 40 and texto.isdigit() and 3 <= len(texto) <= 12:
+        if (
+            confianza >= 40
+            and texto.isdigit()
+            and 3 <= len(texto) <= 12
+        ):
             return crear_candidato(
-                "numerico", texto, confianza, 300 + confianza, fuente
+                "numerico",
+                texto,
+                confianza,
+                300 + confianza,
+                fuente
             )
 
-    # Identificadores alfanuméricos, por ejemplo: P5210494.
-    # Se aceptan en modo auto si la lectura OCR tiene confianza alta.
-    
-    # Identificadores alfanuméricos de 4 a 12 caracteres.
-    # Deben contener al menos una letra y un dígito.
     if modo == "auto" and fuente == "ocr" and confianza >= 80:
         if (
             4 <= len(texto) <= 12
@@ -662,10 +798,11 @@ def analizar(texto, confianza, modo, fuente):
                 texto,
                 confianza,
                 400 + confianza,
-                fuente,
+                fuente
             )
 
     return None
+
 
 def elegir(mejor, candidato):
     if candidato is None:
@@ -678,7 +815,6 @@ def elegir(mejor, candidato):
 
 
 def es_fuerte(candidato):
-    """Resultado suficientemente fiable como para no seguir buscando."""
     if candidato is None:
         return False
 
@@ -697,19 +833,29 @@ def es_fuerte(candidato):
     return False
 
 
+# ============================================================
 # PROCESO PRINCIPAL
+# ============================================================
+
 def nombre_archivo(texto):
-    return re.sub(r"[^a-z0-9]+", "_", texto.lower()).strip("_")
+    return re.sub(
+        r"[^a-z0-9]+",
+        "_",
+        texto.lower()
+    ).strip("_")
 
 
-def leer_identificador(imagen, modo="auto", log=print, carpeta_debug=None):
+def leer_identificador(
+    imagen,
+    modo="auto",
+    log=print,
+    carpeta_debug=None
+):
     mejor = None
 
     for nombre_or, img in generar_orientaciones(imagen):
         gris = ajustar_tamano(a_grises(img))
 
-        # A. Segmentación (rápida): dígitos o letras apilados, en una
-        #    fila o en dos líneas. Se prueba texto oscuro y texto claro.
         for polaridad, base in (
             ("texto oscuro", gris),
             ("texto claro", cv2.bitwise_not(gris)),
@@ -724,7 +870,8 @@ def leer_identificador(imagen, modo="auto", log=print, carpeta_debug=None):
 
             try:
                 texto, confianza, descripcion, n = leer_por_segmentacion(
-                    base, ruta_debug
+                    base,
+                    ruta_debug
                 )
             except pytesseract.TesseractError as error:
                 log(f"Error de Tesseract: {error}")
@@ -732,14 +879,21 @@ def leer_identificador(imagen, modo="auto", log=print, carpeta_debug=None):
 
             log(
                 f"{nombre_or} | Segmentación ({polaridad}) | "
-                f"{n} caracteres | {descripcion} | {confianza:.1f}% | "
-                f"{texto or '(sin lectura)'}"
+                f"{n} caracteres | {descripcion} | "
+                f"{confianza:.1f}% | {texto or '(sin lectura)'}"
             )
 
-            candidato = analizar(texto, confianza, modo, "segmentacion")
+            candidato = analizar(
+                texto,
+                confianza,
+                modo,
+                "segmentacion"
+            )
 
             if candidato:
-                candidato["orientacion"] = f"{nombre_or}, {descripcion}"
+                candidato["orientacion"] = (
+                    f"{nombre_or}, {descripcion}"
+                )
 
                 if candidato["tipo"] == "iso_valido":
                     return candidato
@@ -749,7 +903,6 @@ def leer_identificador(imagen, modo="auto", log=print, carpeta_debug=None):
             if es_fuerte(mejor):
                 return mejor
 
-        # B. OCR por líneas (más lento): ISO en una línea o rotado.
         if modo == "numerico":
             continue
 
@@ -762,11 +915,17 @@ def leer_identificador(imagen, modo="auto", log=print, carpeta_debug=None):
                     continue
 
                 log(
-                    f"{nombre_or} | {nombre_var} | PSM {psm} | "
-                    f"{confianza:.1f}% | {texto or '(sin texto)'}"
+                    f"{nombre_or} | {nombre_var} | "
+                    f"PSM {psm} | {confianza:.1f}% | "
+                    f"{texto or '(sin texto)'}"
                 )
 
-                candidato = analizar(texto, confianza, modo, "ocr")
+                candidato = analizar(
+                    texto,
+                    confianza,
+                    modo,
+                    "ocr"
+                )
 
                 if candidato:
                     candidato["orientacion"] = nombre_or
@@ -779,14 +938,18 @@ def leer_identificador(imagen, modo="auto", log=print, carpeta_debug=None):
     return mejor
 
 
+# ============================================================
+# RESULTADOS
+# ============================================================
+
 def mostrar_resultado(resultado):
     print("\n=== RESULTADO ===")
 
     if resultado is None:
         print("No se encontró un identificador reconocible.")
         print(
-            "Prueba con --detalle para ver cada intento y --debug para ver "
-            "qué caracteres se detectaron."
+            "Prueba con --detalle para ver cada intento "
+            "y --debug para ver qué caracteres se detectaron."
         )
         return
 
@@ -796,56 +959,84 @@ def mostrar_resultado(resultado):
     if tipo == "iso_valido":
         print(f"Código ISO 6346: {valor}")
         print("Dígito de control: correcto.")
+
     elif tipo == "iso_sin_control":
         control = calcular_digito_control(valor)
-        print(f"Código ISO 6346 (sin dígito de control visible): {valor}")
+
         print(
-            f"Dígito de control calculado: {control} -> código completo "
-            f"esperado: {valor}{control} (calculado, no leído de la foto)."
+            f"Código ISO 6346 (sin dígito de control visible): {valor}"
         )
+
+        print(
+            f"Dígito de control calculado: {control} -> "
+            f"código completo esperado: {valor}{control} "
+            "(calculado, no leído de la foto)."
+        )
+
     elif tipo == "iso_invalido":
         esperado = calcular_digito_control(valor[:10])
+
         print(f"Candidato ISO 6346: {valor}")
+
         print(
             "El dígito de control no coincide "
             f"(para esas 10 posiciones sería {esperado}). "
             "Hay al menos un carácter mal leído; revisa la foto."
         )
+
     elif tipo == "numerico":
         print(f"Número de unidad (solo dígitos): {valor}")
-        print("No es un código ISO 6346, así que no hay dígito de control.")
+        print(
+            "No es un código ISO 6346, así que no hay dígito de control."
+        )
+
     elif tipo == "alfanumerico":
         print(f"Identificador alfanumérico: {valor}")
         print("Requiere revisión para confirmar la lectura.")
+
     else:
         print(f"Posible código parcial: {valor}")
         print("No se confirma como identificador completo.")
-
 
     print(f"Confianza OCR: {resultado['confianza']:.1f}%")
     print(f"Orientación: {resultado['orientacion']}")
     print(f"Método: {resultado['fuente']}")
 
 
+# ============================================================
+# EJECUCIÓN LOCAL
+# ============================================================
+
 def main():
     parser = argparse.ArgumentParser(
         description="Lee identificadores de contenedores y unidades."
     )
+
     parser.add_argument(
-        "imagen", nargs="?", default=str(RUTA_POR_DEFECTO),
-        help="Ruta de la imagen (por defecto Imagen3_recorte.png).",
+        "imagen",
+        nargs="?",
+        default=str(RUTA_POR_DEFECTO),
+        help="Ruta de la imagen."
     )
+
     parser.add_argument(
-        "--modo", choices=["auto", "iso", "numerico"], default="auto",
+        "--modo",
+        choices=["auto", "iso", "numerico"],
+        default="auto"
     )
+
     parser.add_argument(
-        "--detalle", action="store_true",
-        help="Muestra cada intento de lectura.",
+        "--detalle",
+        action="store_true",
+        help="Muestra cada intento de lectura."
     )
+
     parser.add_argument(
-        "--debug", action="store_true",
-        help="Guarda imágenes con los caracteres detectados.",
+        "--debug",
+        action="store_true",
+        help="Guarda imágenes con los caracteres detectados."
     )
+
     args = parser.parse_args()
 
     ruta = Path(args.imagen)
@@ -861,12 +1052,19 @@ def main():
         return
 
     log = print if args.detalle else (lambda *a, **k: None)
+
     carpeta_debug = ruta.parent if args.debug else None
 
     print("=== RECONOCIMIENTO DE CONTENEDORES ===")
     print(f"Imagen: {ruta.name} | Modo: {args.modo}")
 
-    resultado = leer_identificador(imagen, args.modo, log, carpeta_debug)
+    resultado = leer_identificador(
+        imagen,
+        args.modo,
+        log,
+        carpeta_debug
+    )
+
     mostrar_resultado(resultado)
 
 
