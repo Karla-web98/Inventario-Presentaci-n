@@ -1,13 +1,14 @@
-
 """
 Lector de identificadores de contenedores y unidades de transporte.
 Lee códigos ISO 6346, números de unidad e identificadores alfanuméricos.
+Optimizado para ejecución local y Render.
 """
 
 import argparse
 import os
 import re
 import shutil
+import time
 from pathlib import Path
 
 # Tesseract con varios hilos es más lento en imágenes pequeñas.
@@ -57,10 +58,19 @@ PATRON_PARCIAL = re.compile(r"[A-Z]{4}[0-9]{1,6}")
 
 CONFIANZA_MIN_ISO = 50
 
+# Límites de tiempo para Tesseract.
+TIMEOUT_OCR_CARACTER = 3
+TIMEOUT_OCR_LINEA = 6
+
+# Tiempo máximo para procesar una imagen completa.
+MAX_TIEMPO_OCR = 90
+
 VALORES_LETRAS = dict(zip(
     LETRAS,
-    [10, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 23, 24,
-     25, 26, 27, 28, 29, 30, 31, 32, 34, 35, 36, 37, 38],
+    [
+        10, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 23, 24,
+        25, 26, 27, 28, 29, 30, 31, 32, 34, 35, 36, 37, 38
+    ],
 ))
 
 A_DIGITO = {
@@ -72,6 +82,29 @@ A_LETRA = {
     "0": "O", "1": "I", "2": "Z", "5": "S",
     "8": "B", "6": "G", "4": "A", "7": "T"
 }
+
+
+# ============================================================
+# CONTROL DE TIEMPO
+# ============================================================
+
+def tiempo_restante(deadline):
+    if deadline is None:
+        return None
+
+    return deadline - time.monotonic()
+
+
+def obtener_timeout(timeout_base, deadline=None):
+    restante = tiempo_restante(deadline)
+
+    if restante is None:
+        return timeout_base
+
+    if restante <= 0:
+        return None
+
+    return min(timeout_base, restante)
 
 
 # ============================================================
@@ -115,6 +148,7 @@ def calcular_digito_control(base10):
             if caracter.isdigit()
             else VALORES_LETRAS[caracter]
         )
+
         suma += valor * (2 ** posicion)
 
     return (suma % 11) % 10
@@ -185,8 +219,10 @@ def ajustar_tamano(gris, objetivo=1400, maximo=2200):
 
     if mayor < objetivo:
         factor, metodo = objetivo / mayor, cv2.INTER_CUBIC
+
     elif mayor > maximo:
         factor, metodo = maximo / mayor, cv2.INTER_AREA
+
     else:
         return gris
 
@@ -256,14 +292,20 @@ def generar_variantes(gris):
 
 def generar_orientaciones(imagen):
     yield "0 grados", imagen
+
     yield "90 grados horario", cv2.rotate(
-        imagen, cv2.ROTATE_90_CLOCKWISE
+        imagen,
+        cv2.ROTATE_90_CLOCKWISE
     )
+
     yield "90 grados antihorario", cv2.rotate(
-        imagen, cv2.ROTATE_90_COUNTERCLOCKWISE
+        imagen,
+        cv2.ROTATE_90_COUNTERCLOCKWISE
     )
+
     yield "180 grados", cv2.rotate(
-        imagen, cv2.ROTATE_180
+        imagen,
+        cv2.ROTATE_180
     )
 
 
@@ -271,7 +313,15 @@ def generar_orientaciones(imagen):
 # OCR POR LÍNEAS
 # ============================================================
 
-def ocr_linea(imagen, psm):
+def ocr_linea(imagen, psm, deadline=None):
+    timeout = obtener_timeout(
+        TIMEOUT_OCR_LINEA,
+        deadline
+    )
+
+    if timeout is None:
+        return "", 0.0
+
     borde = int(np.median(imagen))
 
     imagen = cv2.copyMakeBorder(
@@ -289,12 +339,17 @@ def ocr_linea(imagen, psm):
     datos = pytesseract.image_to_data(
         imagen,
         config=config,
-        output_type=pytesseract.Output.DICT
+        output_type=pytesseract.Output.DICT,
+        timeout=timeout
     )
 
-    palabras, confianzas = [], []
+    palabras = []
+    confianzas = []
 
-    for texto, confianza in zip(datos["text"], datos["conf"]):
+    for texto, confianza in zip(
+        datos["text"],
+        datos["conf"]
+    ):
         texto = limpiar_texto(texto)
 
         try:
@@ -330,6 +385,7 @@ def detectar_cajas(norm):
     )
 
     alto_img, ancho_img = norm.shape
+
     alto_min = max(15, 0.02 * alto_img)
     cajas = []
 
@@ -348,7 +404,8 @@ def detectar_cajas(norm):
 
 
 def agrupar_alineadas(cajas):
-    mejor, mejor_orientacion = [], "horizontal"
+    mejor = []
+    mejor_orientacion = "horizontal"
 
     for x, y, w, h in cajas:
         cx, cy = x + w / 2, y + h / 2
@@ -361,9 +418,13 @@ def agrupar_alineadas(cajas):
                     continue
 
                 if orientacion == "vertical":
-                    alineada = abs((x2 + w2 / 2) - cx) <= 0.5 * h
+                    alineada = (
+                        abs((x2 + w2 / 2) - cx) <= 0.5 * h
+                    )
                 else:
-                    alineada = abs((y2 + h2 / 2) - cy) <= 0.5 * h
+                    alineada = (
+                        abs((y2 + h2 / 2) - cy) <= 0.5 * h
+                    )
 
                 if alineada:
                     grupo.append((x2, y2, w2, h2))
@@ -408,10 +469,20 @@ def buscar_segundo_grupo(cajas, grupo):
     c_x1 = max(c[0] + c[2] for c in candidato)
 
     solape = min(g_x1, c_x1) - max(g_x0, c_x0)
-    ancho_menor = min(g_x1 - g_x0, c_x1 - c_x0)
-    distancia = abs(centro_y(candidato) - centro_y(grupo))
 
-    if solape < 0.3 * ancho_menor or distancia > 3 * h_med:
+    ancho_menor = min(
+        g_x1 - g_x0,
+        c_x1 - c_x0
+    )
+
+    distancia = abs(
+        centro_y(candidato) - centro_y(grupo)
+    )
+
+    if (
+        solape < 0.3 * ancho_menor
+        or distancia > 3 * h_med
+    ):
         return None
 
     return candidato
@@ -421,7 +492,8 @@ def reconocer_caracter(
     norm,
     caja,
     permitidos="alnum",
-    alturas=(80,)
+    alturas=(80,),
+    deadline=None
 ):
     x, y, w, h = caja
     margen = max(2, int(h * 0.04))
@@ -439,9 +511,18 @@ def reconocer_caracter(
         "letras": LETRAS
     }.get(permitidos, ALFANUMERICO)
 
-    votos = {}
+    mejor_caracter = None
+    mejor_confianza = 0.0
 
     for alto in alturas:
+        timeout = obtener_timeout(
+            TIMEOUT_OCR_CARACTER,
+            deadline
+        )
+
+        if timeout is None:
+            break
+
         escala = alto / base.shape[0]
 
         recorte = cv2.resize(
@@ -461,54 +542,58 @@ def reconocer_caracter(
             value=255
         )
 
-        for psm in (10, 8, 13):
-            config = (
-                f"--oem 3 --psm {psm} "
-                f"-c tessedit_char_whitelist={lista}"
-            )
+        config = (
+            f"--oem 3 --psm 10 "
+            f"-c tessedit_char_whitelist={lista}"
+        )
 
+        try:
             datos = pytesseract.image_to_data(
                 recorte,
                 config=config,
-                output_type=pytesseract.Output.DICT
+                output_type=pytesseract.Output.DICT,
+                timeout=timeout
             )
 
-            leido = None
+        except (
+            pytesseract.TesseractError,
+            RuntimeError
+        ) as error:
+            print(
+                f">>> ERROR OCR EN CARÁCTER: {error}",
+                flush=True
+            )
+            continue
 
-            for texto, confianza in zip(
-                datos["text"],
-                datos["conf"]
-            ):
-                texto = limpiar_texto(texto)
+        for texto, confianza in zip(
+            datos["text"],
+            datos["conf"]
+        ):
+            texto = limpiar_texto(texto)
 
-                try:
-                    confianza = float(confianza)
-                except (TypeError, ValueError):
-                    continue
+            try:
+                confianza = float(confianza)
+            except (TypeError, ValueError):
+                continue
 
-                if texto and confianza >= 0:
-                    caracter = ajustar_a_tipo(
-                        texto[0],
-                        permitidos
-                    )
+            if not texto or confianza < 0:
+                continue
 
-                    if caracter:
-                        leido = (caracter, confianza)
-                        break
+            caracter = ajustar_a_tipo(
+                texto[0],
+                permitidos
+            )
 
-            if leido:
-                votos.setdefault(leido[0], []).append(leido[1])
-                break
+            if caracter and confianza > mejor_confianza:
+                mejor_caracter = caracter
+                mejor_confianza = confianza
 
-    if not votos:
-        return None, 0.0
+        # Evita probar otras alturas cuando ya hay
+        # una lectura con confianza razonable.
+        if mejor_caracter and mejor_confianza >= 65:
+            break
 
-    ganador = max(votos, key=lambda c: sum(votos[c]))
-
-    return (
-        ganador,
-        sum(votos[ganador]) / len(votos[ganador])
-    )
+    return mejor_caracter, mejor_confianza
 
 
 def hay_hueco(grupo, orientacion):
@@ -536,7 +621,12 @@ def hay_hueco(grupo, orientacion):
     )
 
 
-def leer_grupo(norm, grupo, orientacion="horizontal"):
+def leer_grupo(
+    norm,
+    grupo,
+    orientacion="horizontal",
+    deadline=None
+):
     if len(grupo) not in (10, 11) and hay_hueco(
         grupo,
         orientacion
@@ -544,7 +634,11 @@ def leer_grupo(norm, grupo, orientacion="horizontal"):
         return None
 
     primera = [
-        reconocer_caracter(norm, caja)
+        reconocer_caracter(
+            norm,
+            caja,
+            deadline=deadline
+        )
         for caja in grupo
     ]
 
@@ -556,9 +650,18 @@ def leer_grupo(norm, grupo, orientacion="horizontal"):
     tipo = "alnum"
 
     if n not in (10, 11):
-        if sum(c.isdigit() for c in texto) >= 0.6 * n:
+        proporcion_digitos = (
+            sum(c.isdigit() for c in texto) / n
+        )
+
+        proporcion_letras = (
+            sum(c.isalpha() for c in texto) / n
+        )
+
+        if proporcion_digitos >= 0.6:
             tipo = "digitos"
-        elif sum(c.isalpha() for c in texto) >= 0.6 * n:
+
+        elif proporcion_letras >= 0.6:
             tipo = "letras"
 
     if tipo == "alnum":
@@ -567,16 +670,29 @@ def leer_grupo(norm, grupo, orientacion="horizontal"):
     resultado = []
 
     for caja, (car1, conf1) in zip(grupo, primera):
+        if tiempo_restante(deadline) is not None:
+            if tiempo_restante(deadline) <= 0:
+                resultado.append((car1, conf1))
+                continue
+
+        corregido = ajustar_a_tipo(car1, tipo)
+
+        if corregido:
+            resultado.append((corregido, conf1))
+            continue
+
         car2, conf2 = reconocer_caracter(
             norm,
             caja,
-            tipo,
-            alturas=(64, 100)
+            permitidos=tipo,
+            alturas=(80,),
+            deadline=deadline
         )
 
-        resultado.append(
-            (car2, conf2) if car2 else (car1, conf1)
-        )
+        if car2:
+            resultado.append((car2, conf2))
+        else:
+            resultado.append((car1, conf1))
 
     return (
         "".join(c for c, _ in resultado),
@@ -624,19 +740,26 @@ def angulo_de_inclinacion(grupo, orientacion):
 
     if orientacion == "vertical":
         pendiente = np.polyfit(ys, xs, 1)[0]
-        return -float(np.degrees(np.arctan(pendiente)))
+
+        return -float(
+            np.degrees(np.arctan(pendiente))
+        )
 
     pendiente = np.polyfit(xs, ys, 1)[0]
 
-    return float(np.degrees(np.arctan(pendiente)))
+    return float(
+        np.degrees(np.arctan(pendiente))
+    )
 
 
 def leer_por_segmentacion(
     gris,
     ruta_debug=None,
-    enderezar=True
+    enderezar=True,
+    deadline=None
 ):
     norm = normalizar_iluminacion(gris)
+
     cajas = detectar_cajas(norm)
     grupo, orientacion = agrupar_alineadas(cajas)
 
@@ -665,7 +788,8 @@ def leer_por_segmentacion(
             return leer_por_segmentacion(
                 derecha,
                 ruta_debug,
-                enderezar=False
+                enderezar=False,
+                deadline=deadline
             )
 
     grupos = [grupo]
@@ -678,7 +802,8 @@ def leer_por_segmentacion(
             grupos.append(segundo)
             descripcion = "horizontal en 2 lineas"
 
-    grupos.sort(key=centro_y if grupo else None)
+    if grupo:
+        grupos.sort(key=centro_y)
 
     if ruta_debug is not None:
         guardar_debug(
@@ -693,16 +818,29 @@ def leer_por_segmentacion(
     if len(grupo) < 3:
         return "", 0.0, descripcion, total
 
-    textos, confianzas = [], []
+    textos = []
+    confianzas = []
 
     for g in grupos:
-        lectura = leer_grupo(norm, g, orientacion)
+        if tiempo_restante(deadline) is not None:
+            if tiempo_restante(deadline) <= 0:
+                return "", 0.0, descripcion, total
+
+        lectura = leer_grupo(
+            norm,
+            g,
+            orientacion,
+            deadline=deadline
+        )
 
         if lectura is None:
             return "", 0.0, descripcion, total
 
         textos.append(lectura[0])
         confianzas.extend(lectura[1])
+
+    if not confianzas:
+        return "", 0.0, descripcion, total
 
     media = sum(confianzas) / len(confianzas)
 
@@ -735,7 +873,11 @@ def analizar(texto, confianza, modo, fuente):
 
         if codigo and valido:
             return crear_candidato(
-                "iso_valido", codigo, confianza, 1000, fuente
+                "iso_valido",
+                codigo,
+                confianza,
+                1000,
+                fuente
             )
 
         if codigo:
@@ -853,13 +995,28 @@ def leer_identificador(
 ):
     mejor = None
 
+    # Límite de tiempo para toda la fotografía.
+    deadline = time.monotonic() + MAX_TIEMPO_OCR
+
+    print(
+        f">>> INICIO OCR. TIEMPO MÁXIMO: {MAX_TIEMPO_OCR}s",
+        flush=True
+    )
+
     for nombre_or, img in generar_orientaciones(imagen):
+        if tiempo_restante(deadline) <= 0:
+            log("Tiempo máximo de OCR alcanzado.")
+            break
+
         gris = ajustar_tamano(a_grises(img))
 
         for polaridad, base in (
             ("texto oscuro", gris),
             ("texto claro", cv2.bitwise_not(gris)),
         ):
+            if tiempo_restante(deadline) <= 0:
+                break
+
             ruta_debug = None
 
             if carpeta_debug is not None:
@@ -871,10 +1028,15 @@ def leer_identificador(
             try:
                 texto, confianza, descripcion, n = leer_por_segmentacion(
                     base,
-                    ruta_debug
+                    ruta_debug,
+                    deadline=deadline
                 )
-            except pytesseract.TesseractError as error:
-                log(f"Error de Tesseract: {error}")
+
+            except (
+                pytesseract.TesseractError,
+                RuntimeError
+            ) as error:
+                log(f"Error durante segmentación OCR: {error}")
                 continue
 
             log(
@@ -906,12 +1068,29 @@ def leer_identificador(
         if modo == "numerico":
             continue
 
+        if tiempo_restante(deadline) <= 0:
+            break
+
         for nombre_var, variante in generar_variantes(gris):
-            for psm in (7, 6, 11):
+            if tiempo_restante(deadline) <= 0:
+                break
+
+            for psm in (7, 11):
+                if tiempo_restante(deadline) <= 0:
+                    break
+
                 try:
-                    texto, confianza = ocr_linea(variante, psm)
-                except pytesseract.TesseractError as error:
-                    log(f"Error de Tesseract: {error}")
+                    texto, confianza = ocr_linea(
+                        variante,
+                        psm,
+                        deadline=deadline
+                    )
+
+                except (
+                    pytesseract.TesseractError,
+                    RuntimeError
+                ) as error:
+                    log(f"Error durante OCR de línea: {error}")
                     continue
 
                 log(
@@ -935,6 +1114,19 @@ def leer_identificador(
 
                     mejor = elegir(mejor, candidato)
 
+                # Si PSM 7 encontró texto, no es necesario
+                # probar PSM 11 sobre la misma variante.
+                if texto:
+                    break
+
+    if tiempo_restante(deadline) <= 0:
+        log(">>> OCR FINALIZADO POR LÍMITE DE TIEMPO.")
+
+    print(
+        ">>> FIN DEL PROCESAMIENTO OCR",
+        flush=True
+    )
+
     return mejor
 
 
@@ -947,10 +1139,12 @@ def mostrar_resultado(resultado):
 
     if resultado is None:
         print("No se encontró un identificador reconocible.")
+
         print(
             "Prueba con --detalle para ver cada intento "
             "y --debug para ver qué caracteres se detectaron."
         )
+
         return
 
     tipo = resultado["tipo"]
@@ -986,6 +1180,7 @@ def mostrar_resultado(resultado):
 
     elif tipo == "numerico":
         print(f"Número de unidad (solo dígitos): {valor}")
+
         print(
             "No es un código ISO 6346, así que no hay dígito de control."
         )
@@ -1051,7 +1246,9 @@ def main():
         print("No se pudo abrir la imagen.")
         return
 
-    log = print if args.detalle else (lambda *a, **k: None)
+    log = print if args.detalle else (
+        lambda *a, **k: None
+    )
 
     carpeta_debug = ruta.parent if args.debug else None
 
