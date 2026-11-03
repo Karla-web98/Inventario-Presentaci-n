@@ -22,4 +22,4 @@ COPY . .
 
 EXPOSE 10000
 
-CMD ["gunicorn", "--bind", "0.0.0.0:10000", "App:app"]
+CMD ["gunicorn", "--timeout", "120", "--bind", "0.0.0.0:10000", "App:app"]
