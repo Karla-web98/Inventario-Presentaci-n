@@ -1,0 +1,359 @@
+/* =========================================================
+   CONTROLES COMPARTIDOS: IDIOMA Y PANEL LATERAL
+========================================================= */
+
+/* BOTONES DEL ENCABEZADO */
+
+.header-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.header-control-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 40px;
+    padding: 8px 13px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    color: var(--text-primary);
+    font-weight: 700;
+    cursor: pointer;
+    transition: background var(--transition),
+                border-color var(--transition);
+}
+
+.header-control-btn:hover {
+    background: var(--primary-light);
+    border-color: var(--primary);
+}
+
+.header-control-btn:focus-visible {
+    outline: 3px solid var(--primary-light);
+    outline-offset: 2px;
+}
+
+/* SELECTOR DE IDIOMA */
+
+.language-btn {
+    min-width: 105px;
+}
+
+/* BOTÓN DEL PANEL LATERAL */
+
+.sidebar-toggle {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    font-size: 20px;
+}
+
+/* ESTADO CONTRAÍDO DEL PANEL */
+
+.admin-layout.sidebar-collapsed .admin-sidebar,
+.app-layout.sidebar-collapsed .app-sidebar {
+    width: 76px;
+    min-width: 76px;
+}
+
+.admin-layout.sidebar-collapsed .admin-main,
+.app-layout.sidebar-collapsed .app-main {
+    min-width: 0;
+}
+
+/* OCULTAR TEXTOS DEL PANEL */
+
+.admin-layout.sidebar-collapsed .admin-brand > div:last-child,
+.admin-layout.sidebar-collapsed .admin-profile > div:last-child,
+.app-layout.sidebar-collapsed .sidebar-brand > div:last-child,
+.app-layout.sidebar-collapsed .sidebar-user > div:last-child,
+.app-layout.sidebar-collapsed .nav-label,
+.app-layout.sidebar-collapsed .sidebar-bottom small,
+.app-layout.sidebar-collapsed .back-link {
+    display: none;
+}
+
+/* CENTRAR ELEMENTOS */
+
+.admin-layout.sidebar-collapsed .admin-brand,
+.admin-layout.sidebar-collapsed .admin-profile,
+.admin-layout.sidebar-collapsed .admin-nav-item,
+.app-layout.sidebar-collapsed .sidebar-brand,
+.app-layout.sidebar-collapsed .sidebar-user,
+.app-layout.sidebar-collapsed .nav-link {
+    justify-content: center;
+}
+
+/* RESPONSIVE */
+
+@media (max-width: 700px) {
+    .header-controls {
+        gap: 6px;
+    }
+
+    .header-control-btn {
+        min-height: 36px;
+        padding: 7px 10px;
+    }
+}
+
+
+/* =====================================================
+   BOTONES GENERALES
+===================================================== */
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 42px;
+    padding: 10px 20px;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.2;
+    text-align: center;
+    text-decoration: none;
+    cursor: pointer;
+    transition:
+        background-color 0.2s ease,
+        color 0.2s ease,
+        border-color 0.2s ease,
+        box-shadow 0.2s ease,
+        transform 0.2s ease;
+}
+
+.btn:hover {
+    transform: translateY(-1px);
+}
+
+.btn:active {
+    transform: translateY(0);
+}
+
+.btn:focus-visible,
+.nav-link:focus-visible,
+.text-button:focus-visible {
+    outline: 3px solid rgba(37, 99, 235, 0.25);
+    outline-offset: 3px;
+}
+
+.btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+/* =====================================================
+   BOTÓN PRINCIPAL
+===================================================== */
+
+.btn-primary {
+    background-color: var(--primary, #2563eb);
+    color: #ffffff;
+    border-color: var(--primary, #2563eb);
+}
+
+.btn-primary:hover {
+    background-color: var(--primary-dark, #1d4ed8);
+    border-color: var(--primary-dark, #1d4ed8);
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.20);
+}
+
+/* =====================================================
+   BOTÓN SECUNDARIO
+===================================================== */
+
+.btn-secondary {
+    background-color: #ffffff;
+    color: #475569;
+    border-color: #cbd5e1;
+}
+
+.btn-secondary:hover {
+    background-color: #f1f5f9;
+    border-color: #94a3b8;
+    color: #1e293b;
+}
+
+/* =====================================================
+   BOTÓN DE TEXTO
+===================================================== */
+
+.text-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 4px;
+    border: none;
+    background: transparent;
+    color: var(--primary, #2563eb);
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: color 0.2s ease;
+}
+
+.text-button:hover {
+    color: var(--primary-dark, #1d4ed8);
+    text-decoration: underline;
+}
+
+/* =====================================================
+   BOTONES DEL MENÚ LATERAL
+===================================================== */
+
+.nav-link {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    min-height: 44px;
+    padding: 11px 14px;
+    border: none;
+    border-radius: 10px;
+    background: transparent;
+    color: #64748b;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    text-align: left;
+    cursor: pointer;
+    transition:
+        background-color 0.2s ease,
+        color 0.2s ease;
+}
+
+.nav-link:hover {
+    background-color: #f1f5f9;
+    color: var(--primary, #2563eb);
+}
+
+.nav-link.active {
+    background-color: var(--primary-light, #eff6ff);
+    color: var(--primary, #2563eb);
+    font-weight: 700;
+}
+
+.nav-link span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    font-size: 18px;
+}
+
+/* =====================================================
+   ENLACE PARA REGRESAR
+===================================================== */
+
+.back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 0;
+    color: #64748b;
+    font-size: 13px;
+    font-weight: 500;
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+.back-link:hover {
+    color: var(--primary, #2563eb);
+}
+
+/* =====================================================
+   BOTONES DEL FORMULARIO Y WIZARD
+===================================================== */
+
+.ocr-actions,
+.wizard-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.wizard-footer {
+    margin-top: 28px;
+    padding-top: 20px;
+    border-top: 1px solid #e2e8f0;
+}
+
+/* =====================================================
+   RESPONSIVE
+===================================================== */
+
+@media (max-width: 600px) {
+    .btn {
+        min-height: 40px;
+        padding: 10px 14px;
+        font-size: 13px;
+    }
+
+    .wizard-footer,
+    .ocr-actions {
+        flex-wrap: wrap;
+    }
+
+    .wizard-footer .btn,
+    .ocr-actions .btn {
+        flex: 1;
+    }
+}
+
+/* =========================================================
+   AJUSTES MÓVILES - COMPONENTES COMPARTIDOS
+========================================================= */
+
+@media (max-width: 600px) {
+
+    .header-controls {
+        width: 100%;
+        flex-wrap: wrap;
+    }
+
+    .header-control-btn {
+        min-height: 40px;
+        font-size: 12px;
+    }
+
+    .language-btn {
+        min-width: 90px;
+    }
+
+    .btn {
+        min-height: 42px;
+        max-width: 100%;
+        white-space: normal;
+    }
+
+    .admin-layout.sidebar-collapsed .admin-sidebar,
+    .app-layout.sidebar-collapsed .app-sidebar {
+        width: 100%;
+        min-width: 0;
+    }
+
+    .admin-layout.sidebar-collapsed .admin-brand > div:last-child,
+    .admin-layout.sidebar-collapsed .admin-profile > div:last-child,
+    .app-layout.sidebar-collapsed .sidebar-brand > div:last-child,
+    .app-layout.sidebar-collapsed .sidebar-user > div:last-child {
+        display: block;
+    }
+
+    .admin-layout.sidebar-collapsed .admin-nav-item,
+    .app-layout.sidebar-collapsed .nav-link {
+        justify-content: center;
+    }
+}

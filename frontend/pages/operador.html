@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inventario Digitalizado | Operador</title>
+
+    <link rel="stylesheet" href="/static/css/variables.css">
+    <link rel="stylesheet" href="/static/css/layout.css">
+    <link rel="stylesheet" href="/static/css/components.css">
+    <link rel="stylesheet" href="/static/css/operador.css">
+</head>
+
+<body>
+<div class="app-layout">
+
+    <aside class="app-sidebar">
+        <div class="sidebar-brand">
+            <div class="brand-icon">ID</div>
+            <div>
+                <strong>Inventario Digital</strong>
+                <small>Control de cajas</small>
+            </div>
+        </div>
+
+        <div class="sidebar-user">
+            <div class="user-avatar">OP</div>
+            <div>
+                <strong id="operatorName">Operador</strong>
+                <small>Personal operativo</small>
+            </div>
+        </div>
+
+        <nav class="sidebar-nav">
+            <span class="nav-label">MENÚ PRINCIPAL</span>
+
+            <button class="nav-link active" data-view="dashboard">
+                <span>▦</span> Inicio
+            </button>
+
+            <button class="nav-link" data-view="registro">
+                <span>＋</span> Registrar contenedor
+            </button>
+
+            <button class="nav-link" data-view="historial">
+                <span>◷</span> Historial
+            </button>
+        </nav>
+
+        <div class="sidebar-bottom">
+            <a href="/" class="back-link">← Regresar al inicio</a>
+            <small>Inventario Digitalizado</small>
+        </div>
+    </aside>
+
+    <main class="app-main">
+        <header class="topbar">
+            <div>
+                <span class="topbar-eyebrow">ÁREA OPERATIVA</span>
+                <h1 id="pageTitle">Panel del operador</h1>
+            </div>
+            <div class="topbar-date" id="currentDate"></div>
+        </header>
+
+        <div class="app-content">
+            <div class="page-container">
+
+                <!-- DASHBOARD -->
+                <section id="dashboardView" class="view-section">
+                    <div class="welcome-panel">
+                        <div>
+                            <span class="welcome-tag">PANEL DE OPERACIÓN</span>
+                            <h2>¡Bienvenido, <span id="welcomeName">Operador</span>!</h2>
+                            <p>Registra y consulta los movimientos de cajas en el patio.</p>
+                        </div>
+                        <div class="welcome-icon">▣</div>
+                    </div>
+
+                    <div class="operator-info-grid">
+                        <article class="info-card">
+                            <span>Turno asignado</span>
+                            <strong id="operatorShift">Matutino</strong>
+                        </article>
+                        <article class="info-card">
+                            <span>Responsable de turno</span>
+                            <strong id="shiftManager">Por asignar</strong>
+                        </article>
+                        <article class="info-card">
+                            <span>Fecha de operación</span>
+                            <strong id="operationDate">--</strong>
+                        </article>
+                    </div>
+
+                    <div class="section-heading">
+                        <div>
+                            <h2>Resumen de actividad</h2>
+                            <p>Actividad registrada desde este navegador.</p>
+                        </div>
+                        <button class="btn btn-primary" data-go="registro">
+                            + Nuevo registro
+                        </button>
+                    </div>
+
+                    <div class="stats-grid">
+                        <article class="stat-card">
+                            <span class="stat-icon blue">▣</span>
+                            <div>
+                                <small>Contenedores registrados</small>
+                                <strong id="totalContainers">0</strong>
+                            </div>
+                        </article>
+
+                        <article class="stat-card">
+                            <span class="stat-icon green">▧</span>
+                            <div>
+                                <small>Fotografías capturadas</small>
+                                <strong id="totalPhotos">0</strong>
+                            </div>
+                        </article>
+
+                        <article class="stat-card">
+                            <span class="stat-icon orange">◷</span>
+                            <div>
+                                <small>Último registro</small>
+                                <strong id="lastRegistration">Sin registros</strong>
+                            </div>
+                        </article>
+                    </div>
+
+                    <div class="card recent-card">
+                        <div class="section-heading compact">
+                            <div>
+                                <h2>Registros recientes</h2>
+                                <p>Los últimos contenedores capturados.</p>
+                            </div>
+                            <button class="text-button" data-go="historial">
+                                Ver historial →
+                            </button>
+                        </div>
+
+                        <div id="recentRecords" class="table-wrapper">
+                            <p class="empty-state">Todavía no hay registros.</p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- REGISTRO -->
+                <section id="registroView" class="view-section hidden">
+                    <div class="section-heading">
+                        <div>
+                            <h2>Registrar contenedor</h2>
+                            <p>Identifica, documenta y confirma la información.</p>
+                        </div>
+                    </div>
+
+                    <div class="wizard">
+                        <div class="wizard-step active" data-step-indicator="1">
+                            <span>1</span>
+                            <div><strong>Identificar</strong><small>Contenedor</small></div>
+                        </div>
+                        <div class="wizard-line"></div>
+                        <div class="wizard-step" data-step-indicator="2">
+                            <span>2</span>
+                            <div><strong>Documentar</strong><small>Evidencia</small></div>
+                        </div>
+                        <div class="wizard-line"></div>
+                        <div class="wizard-step" data-step-indicator="3">
+                            <span>3</span>
+                            <div><strong>Confirmar</strong><small>Registro</small></div>
+                        </div>
+                    </div>
+
+                    <!-- PASO 1 -->
+                    <div id="step1" class="card wizard-panel">
+                        <div class="panel-heading">
+                            <span class="panel-number">01</span>
+                            <div>
+                                <h3>Identificación del contenedor</h3>
+                                <p>Escanea el número o ingrésalo manualmente.</p>
+                            </div>
+                        </div>
+
+                        <form id="ocrForm">
+                            <label for="scanImage">Fotografía del identificador</label>
+                            <input
+                                type="file"
+                                id="scanImage"
+                                accept="image/jpeg,image/png,image/webp"
+                            >
+
+                            <div class="ocr-actions">
+                                <select id="scanMode">
+                                    <option value="auto">Detección automática</option>
+                                    <option value="iso">Identificador ISO</option>
+                                    <option value="numerico">Identificador numérico</option>
+                                </select>
+                                <button type="submit" class="btn btn-primary" id="scanButton">
+                                    Escanear con OCR
+                                </button>
+                            </div>
+                        </form>
+
+                        <div id="ocrMessage" class="message hidden"></div>
+
+                        <div class="form-grid">
+                            <div class="form-group full-width">
+                                <label for="containerNumber">Número de contenedor *</label>
+                                <input
+                                    id="containerNumber"
+                                    type="text"
+                                    maxlength="20"
+                                    placeholder="Ej. UMXU2517344"
+                                    required
+                                >
+                                <small>Puedes corregir manualmente el resultado del OCR.</small>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="carrier">Carrier *</label>
+                                <input id="carrier" type="text" placeholder="Nombre del carrier">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="containerStatus">Status *</label>
+                                <select id="containerStatus">
+                                    <option value="">Selecciona un estado</option>
+                                    <option value="Vacío">Vacío</option>
+                                    <option value="Cargado Prod">Cargado Prod</option>
+                                    <option value="Equipo vacío">Equipo vacío</option>
+                                    <option value="Dañado">Dañado</option>
+                                </select>
+                            </div>
+
+                            
+<div class="form-group">
+    <label for="yard">Patio *</label>
+    <select id="yard" required>
+        <option value="">Selecciona un patio</option>
+        <option value="T-REX">T-REX</option>
+        <option value="FÓSIL">FÓSIL</option>
+    </select>
+</div>
+
+<div class="form-group">
+    <label for="location">Ubicación *</label>
+    <select id="location" required disabled>
+        <option value="">Primero selecciona un patio</option>
+    </select>
+</div>
+
+<div class="form-group">
+    <label for="spot">Número de Spot *</label>
+    <input
+        id="spot"
+        type="number"
+        min="1"
+        step="1"
+        placeholder="Ej. 25"
+        required
+    >
+    <small>Indica el número de posición del contenedor.</small>
+</div>
+
+                            <div class="form-group full-width">
+                                <label for="observations">Observaciones</label>
+                                <textarea id="observations" rows="3" placeholder="Información adicional..."></textarea>
+                            </div>
+                        </div>
+
+                        <div class="wizard-footer">
+                            <button class="btn btn-secondary" data-go="dashboard" type="button">
+                                Cancelar
+                            </button>
+                            <button class="btn btn-primary" id="toEvidence" type="button">
+                                Continuar a evidencias →
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- PASO 2 -->
+                    <div id="step2" class="card wizard-panel hidden">
+                        <div class="panel-heading">
+                            <span class="panel-number">02</span>
+                            <div>
+                                <h3>Evidencia fotográfica</h3>
+                                <p>Agrega fotografías para documentar el estado del contenedor.</p>
+                            </div>
+                        </div>
+
+                        <div class="evidence-counter">
+                            <strong id="photoCounter">0 / 5 fotografías</strong>
+                            <span>Se requiere al menos una fotografía.</span>
+                        </div>
+
+                        <label class="upload-area" for="evidenceInput">
+                            <span class="upload-icon">＋</span>
+                            <strong>Seleccionar fotografías</strong>
+                            <small>JPG, PNG o WEBP · Máximo 5 imágenes</small>
+                        </label>
+
+                        <input
+                            type="file"
+                            id="evidenceInput"
+                            accept="image/jpeg,image/png,image/webp"
+                            multiple
+                            hidden
+                        >
+
+                        <div id="evidenceMessage" class="message hidden"></div>
+                        <div id="evidencePreview" class="evidence-grid"></div>
+
+                        
+                <!-- Evidencia del sello -->
+                <div id="sealEvidenceSection" class="seal-evidence-section hidden">
+
+                <div class="evidence-counter">
+                    <strong>Fotografía del sello</strong>
+                    <span>Obligatoria para el status seleccionado.</span>
+                </div>
+
+                <label class="upload-area" for="sealEvidenceInput">
+                    <span class="upload-icon">＋</span>
+                    <strong>Capturar fotografía del sello</strong>
+                    <small>JPG, PNG o WEBP · Máximo 1 imagen</small>
+                </label>
+
+                    <input
+                        type="file"
+                        id="sealEvidenceInput"
+                        accept="image/jpeg,image/png,image/webp"
+                        capture="environment"
+                        hidden
+                    >
+
+                        <div id="sealEvidenceMessage" class="message hidden"></div>
+                        <div id="sealEvidencePreview" class="evidence-grid"></div>
+
+                    </div>
+
+                        <div class="wizard-footer">
+                            <button class="btn btn-secondary" id="backToData" type="button">
+                                ← Regresar
+                            </button>
+                            <button class="btn btn-primary" id="toConfirmation" type="button">
+                                Continuar a confirmación →
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- PASO 3 -->
+                    <div id="step3" class="card wizard-panel hidden">
+                        <div class="panel-heading">
+                            <span class="panel-number">03</span>
+                            <div>
+                                <h3>Confirmar registro</h3>
+                                <p>Verifica la información antes de guardar.</p>
+                            </div>
+                        </div>
+
+                        <div id="confirmationDetails" class="confirmation-grid"></div>
+
+                        <div class="confirmation-notice">
+                            La información y las fotografías se guardarán en este navegador.
+                        </div>
+
+                        <div id="confirmationMessage" class="message hidden"></div>
+
+                        <div class="wizard-footer">
+                            <button class="btn btn-secondary" id="backToEvidence" type="button">
+                                ← Regresar
+                            </button>
+                            <button class="btn btn-primary" id="saveRegistration" type="button">
+                                Confirmar y guardar
+                            </button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- HISTORIAL -->
+                <section id="historialView" class="view-section hidden">
+                    <div class="section-heading">
+                        <div>
+                            <h2>Historial de registros</h2>
+                            <p>Consulta los contenedores registrados en este navegador.</p>
+                        </div>
+                        <button class="btn btn-primary" data-go="registro">
+                            + Nuevo registro
+                        </button>
+                    </div>
+
+                    <div class="card history-filters">
+                        <input id="historySearch" type="search" placeholder="Buscar por caja, carrier o ubicación...">
+                        <select id="historyStatus">
+                            <option value="">Todos los estados</option>
+                            <option value="Disponible">Disponible</option>
+                            <option value="Ocupado">Ocupado</option>
+                            <option value="Observado">Observado</option>
+                            <option value="En reparación">En reparación</option>
+                        </select>
+                    </div>
+
+                    <div class="card">
+                        <div id="historyRecords" class="table-wrapper">
+                            <p class="empty-state">Todavía no hay registros.</p>
+                        </div>
+                    </div>
+
+                    <div id="recordDetail" class="card detail-panel hidden"></div>
+                </section>
+
+            </div>
+        </div>
+    </main>
+</div>
+
+<script type="module" src="/static/js/operador/dashboard.js"></script>
+</body>
+</html>

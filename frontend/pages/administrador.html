@@ -1,0 +1,673 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Administrador | Inventario Digitalizado</title>
+
+    <link rel="stylesheet" href="/static/css/variables.css">
+    <link rel="stylesheet" href="/static/css/layout.css">
+    <link rel="stylesheet" href="/static/css/components.css">
+    <link rel="stylesheet" href="/static/css/administrador.css">
+</head>
+
+<body>
+    <div class="admin-layout">
+
+        <!-- SIDEBAR -->
+        <aside class="admin-sidebar">
+
+            <div class="admin-brand">
+                <div class="admin-brand-icon">
+                    ID
+                </div>
+
+                <div>
+                    <strong>Inventario</strong>
+                    <span>Digitalizado</span>
+                </div>
+            </div>
+
+            <div class="admin-profile">
+                <div class="admin-avatar">
+                    A
+                </div>
+
+                <div>
+                    <strong>Administrador</strong>
+                    <span>Administrador</span>
+                </div>
+            </div>
+
+            <nav class="admin-nav">
+
+                <button
+                    class="admin-nav-item active"
+                    data-view="dashboard"
+                >
+                    <span>▦</span>
+                    Dashboard
+                </button>
+
+                <button
+                    class="admin-nav-item"
+                    data-view="inventario"
+                >
+                    <span>▤</span>
+                    Inventario
+                </button>
+
+                <button
+                    class="admin-nav-item"
+                    data-view="historico"
+                >
+                    <span>◷</span>
+                    Histórico
+                </button>
+
+                <button
+                    class="admin-nav-item"
+                    data-view="auditorias"
+                >
+                    <span>✓</span>
+                    Auditorías
+                </button>
+
+                <button
+                    class="admin-nav-item"
+                    data-view="usuarios"
+                >
+                    <span>♙</span>
+                    Usuarios
+                </button>
+
+                <button
+                    class="admin-nav-item"
+                    data-view="ubicaciones"
+                >
+                    <span>⌖</span>
+                    Ubicaciones
+                </button>
+
+                <button
+                    class="admin-nav-item"
+                    data-view="reportes"
+                >
+                    <span>▥</span>
+                    Reportes
+                </button>
+
+            </nav>
+
+            <div class="admin-sidebar-footer">
+                <button
+                    class="admin-nav-item"
+                    onclick="window.location.href='/'"
+                >
+                    <span>←</span>
+                    Regresar
+                </button>
+            </div>
+
+        </aside>
+
+        <!-- CONTENIDO PRINCIPAL -->
+        <main class="admin-main">
+
+            <!-- HEADER -->
+            <header class="admin-header">
+
+                <div>
+                    <p class="admin-header-label">
+                        Panel de administración
+                    </p>
+
+                    <h1 id="adminPageTitle">
+                        Dashboard
+                    </h1>
+                </div>
+
+                <div class="admin-header-user">
+
+                    <div class="admin-header-avatar">
+                        A
+                    </div>
+
+                    <div>
+                        <strong>Administrador</strong>
+                        <span>Sesión activa</span>
+                    </div>
+
+                </div>
+
+            </header>
+
+            <!-- DASHBOARD -->
+            <section
+                id="view-dashboard"
+                class="admin-view active"
+            >
+
+                <div class="admin-welcome">
+
+                    <div>
+                        <h2>Resumen del inventario</h2>
+
+                        <p>
+                            Consulta el estado general de las cajas
+                            registradas en el sistema.
+                        </p>
+                    </div>
+
+                    <div class="admin-date">
+                        <span>Fecha</span>
+                        <strong id="currentDate">
+                            --
+                        </strong>
+                    </div>
+
+                </div>
+
+                <!-- MÉTRICAS -->
+                <div class="admin-stats-grid">
+
+                    <article class="admin-stat-card">
+                        <div class="admin-stat-icon blue">
+                            ▤
+                        </div>
+
+                        <div>
+                            <span>Total de cajas</span>
+                            <strong id="statTotal">0</strong>
+                        </div>
+                    </article>
+
+                    <article class="admin-stat-card">
+                        <div class="admin-stat-icon green">
+                            ✓
+                        </div>
+
+                        <div>
+                            <span>Vacío</span>
+                            <strong id="statVacios">0</strong>
+                        </div>
+                    </article>
+
+                    <article class="admin-stat-card">
+                        <div class="admin-stat-icon yellow">
+                            ▣
+                        </div>
+
+                        <div>
+                            <span>Cargado Prod</span>
+                            <strong id="statCargadosProd">0</strong>
+                        </div>
+                    </article>
+
+                    <article class="admin-stat-card">
+                        <div class="admin-stat-icon purple">
+                            ▤
+                        </div>
+
+                        <div>
+                            <span>Equipo vacío</span>
+                            <strong id="statEquiposVacios">0</strong>
+                        </div>
+                    </article>
+
+                    <article class="admin-stat-card">
+                        <div class="admin-stat-icon red">
+                            !
+                        </div>
+
+                        <div>
+                            <span>Dañado</span>
+                            <strong id="statDanados">0</strong>
+                        </div>
+                    </article>
+
+                    <article class="admin-stat-card">
+                        <div class="admin-stat-icon purple">
+                            ▧
+                        </div>
+
+                        <div>
+                            <span>Fotografías</span>
+                            <strong id="statFotos">0</strong>
+                        </div>
+                    </article>
+
+                </div>
+
+                <!-- ACCIONES -->
+                <div class="admin-section-header">
+                    <div>
+                        <h2>Acciones rápidas</h2>
+
+                        <p>
+                            Accede rápidamente a las principales
+                            funciones administrativas.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="admin-actions-grid">
+
+                    <button
+                        class="admin-action-card"
+                        data-view="inventario"
+                    >
+                        <div class="admin-action-icon">
+                            ▤
+                        </div>
+
+                        <div>
+                            <strong>Consultar inventario</strong>
+                            <span>Ver todas las cajas registradas.</span>
+                        </div>
+
+                        <b>→</b>
+                    </button>
+
+                    <button
+                        class="admin-action-card"
+                        data-view="historico"
+                    >
+                        <div class="admin-action-icon">
+                            ◷
+                        </div>
+
+                        <div>
+                            <strong>Consultar histórico</strong>
+                            <span>Revisar registros anteriores.</span>
+                        </div>
+
+                        <b>→</b>
+                    </button>
+
+                    <button
+                        class="admin-action-card"
+                        data-view="auditorias"
+                    >
+                        <div class="admin-action-icon">
+                            ✓
+                        </div>
+
+                        <div>
+                            <strong>Auditorías</strong>
+                            <span>Revisar actividad del sistema.</span>
+                        </div>
+
+                        <b>→</b>
+                    </button>
+
+                    <button
+                        class="admin-action-card"
+                        data-view="reportes"
+                    >
+                        <div class="admin-action-icon">
+                            ▥
+                        </div>
+
+                        <div>
+                            <strong>Generar reportes</strong>
+                            <span>Consultar y exportar información.</span>
+                        </div>
+
+                        <b>→</b>
+                    </button>
+
+                </div>
+
+                <!-- ÚLTIMOS REGISTROS -->
+                <div class="admin-section-header">
+
+                    <div>
+                        <h2>Últimos registros</h2>
+
+                        <p>
+                            Contenedores registrados recientemente.
+                        </p>
+                    </div>
+
+                    <button
+                        class="btn btn-secondary"
+                        data-view="inventario"
+                    >
+                        Ver inventario
+                    </button>
+
+                </div>
+
+                <div class="admin-table-card">
+                    <div class="admin-table-wrapper">
+
+                        <table class="admin-table">
+
+                            <thead>
+                                <tr>
+                                    <th>CAJA</th>
+                                    <th>CARRIER</th>
+                                    <th>STATUS</th>
+                                    <th>UBICACIÓN</th>
+                                    <th>SPOT</th>
+                                    <th>PATIO</th>
+                                    <th>FECHA</th>
+                                    <th>ACCIÓN</th>
+                                </tr>
+                            </thead>
+
+                            <tbody id="dashboardRecentTable">
+                                <tr>
+                                    <td colspan="8" class="admin-empty">
+                                        No hay registros todavía.
+                                    </td>
+                                </tr>
+                            </tbody>
+
+                        </table>
+
+                    </div>
+                </div>
+
+            </section>
+
+            <!-- INVENTARIO -->
+            <section
+                id="view-inventario"
+                class="admin-view"
+            >
+
+                <div class="admin-page-heading">
+                    <div>
+                        <h2>Inventario</h2>
+
+                        <p>
+                            Consulta y administra las cajas registradas.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="admin-filters">
+
+                    <input
+                        type="search"
+                        id="inventorySearch"
+                        placeholder="Buscar por número de caja..."
+                    >
+
+                    <select id="inventoryStatusFilter">
+                        <option value="">Todos los estados</option>
+                        <option value="vacio">Vacío</option>
+                        <option value="cargado prod">Cargado Prod</option>
+                        <option value="equipo vacio">Equipo vacío</option>
+                        <option value="danado">Dañado</option>
+                    </select>
+
+                    <select id="inventoryPatioFilter">
+                        <option value="">Todos los patios</option>
+                        <option value="T-REX">T-REX</option>
+                        <option value="FÓSIL">FÓSIL</option>
+                    </select>
+
+                </div>
+
+                <div class="admin-table-card">
+                    <div class="admin-table-wrapper">
+
+                        <table class="admin-table">
+
+                            <thead>
+                                <tr>
+                                    <th>CAJA</th>
+                                    <th>CARRIER</th>
+                                    <th>STATUS</th>
+                                    <th>UBICACIÓN</th>
+                                    <th>SPOT</th>
+                                    <th>PATIO</th>
+                                    <th>FECHA</th>
+                                    <th>ACCIÓN</th>
+                                </tr>
+                            </thead>
+
+                            <tbody id="inventoryTable">
+                                <tr>
+                                    <td colspan="8" class="admin-empty">
+                                        No hay registros.
+                                    </td>
+                                </tr>
+                            </tbody>
+
+                        </table>
+
+                    </div>
+                </div>
+
+            </section>
+
+            <!-- HISTÓRICO -->
+            <section
+                id="view-historico"
+                class="admin-view"
+            >
+
+                <div class="admin-page-heading">
+                    <div>
+                        <h2>Histórico</h2>
+
+                        <p>
+                            Consulta el historial de registros
+                            realizados en el sistema.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="admin-table-card">
+                    <div class="admin-table-wrapper">
+
+                        <table class="admin-table">
+
+                            <thead>
+                                <tr>
+                                    <th>CAJA</th>
+                                    <th>EVENTO</th>
+                                    <th>OPERADOR</th>
+                                    <th>FECHA</th>
+                                    <th>HORA</th>
+                                </tr>
+                            </thead>
+
+                            <tbody id="historyTable">
+                                <tr>
+                                    <td colspan="5" class="admin-empty">
+                                        No hay eventos registrados.
+                                    </td>
+                                </tr>
+                            </tbody>
+
+                        </table>
+
+                    </div>
+                </div>
+
+            </section>
+
+            <!-- AUDITORÍAS -->
+            <section
+                id="view-auditorias"
+                class="admin-view"
+            >
+
+                <div class="admin-page-heading">
+                    <div>
+                        <h2>Auditorías</h2>
+
+                        <p>
+                            Revisa la actividad realizada por los usuarios.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="admin-placeholder">
+
+                    <div class="admin-placeholder-icon">
+                        ✓
+                    </div>
+
+                    <h3>Auditorías</h3>
+
+                    <p>
+                        Aquí se mostrarán los movimientos y acciones
+                        realizadas dentro del sistema.
+                    </p>
+
+                </div>
+
+            </section>
+
+            <!-- USUARIOS -->
+            <section
+                id="view-usuarios"
+                class="admin-view"
+            >
+
+                <div class="admin-page-heading">
+                    <div>
+                        <h2>Usuarios</h2>
+
+                        <p>
+                            Administración de operadores y administradores.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="admin-placeholder">
+
+                    <div class="admin-placeholder-icon">
+                        ♙
+                    </div>
+
+                    <h3>Usuarios</h3>
+
+                    <p>
+                        Aquí podrás consultar y administrar
+                        los usuarios del sistema.
+                    </p>
+
+                </div>
+
+            </section>
+
+            <!-- UBICACIONES -->
+            <section
+                id="view-ubicaciones"
+                class="admin-view"
+            >
+
+                <div class="admin-page-heading">
+                    <div>
+                        <h2>Ubicaciones</h2>
+
+                        <p>
+                            Administración de patios y ubicaciones.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="admin-placeholder">
+
+                    <div class="admin-placeholder-icon">
+                        ⌖
+                    </div>
+
+                    <h3>Ubicaciones</h3>
+
+                    <p>
+                        Aquí podrás consultar los patios y
+                        ubicaciones disponibles.
+                    </p>
+
+                </div>
+
+            </section>
+
+            <!-- REPORTES -->
+            <section
+                id="view-reportes"
+                class="admin-view"
+            >
+
+                <div class="admin-page-heading">
+                    <div>
+                        <h2>Reportes</h2>
+
+                        <p>
+                            Consulta información resumida del inventario.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="admin-placeholder">
+
+                    <div class="admin-placeholder-icon">
+                        ▥
+                    </div>
+
+                    <h3>Reportes</h3>
+
+                    <p>
+                        Aquí estarán disponibles los reportes
+                        del inventario y sus opciones de exportación.
+                    </p>
+
+                </div>
+
+            </section>
+
+            <!-- DETALLE DEL CONTENEDOR -->
+            <section
+                id="view-detalle"
+                class="admin-view"
+            >
+
+                <div class="admin-page-heading">
+
+                    <button
+                        class="btn btn-secondary"
+                        data-view="inventario"
+                    >
+                        ← Regresar al inventario
+                    </button>
+
+                    <div>
+                        <h2>Detalle del contenedor</h2>
+
+                        <p>
+                            Información completa del registro.
+                        </p>
+                    </div>
+
+                </div>
+
+                <div id="containerDetail">
+                    <!-- Se llena mediante JavaScript -->
+                </div>
+
+            </section>
+
+        </main>
+    </div>
+
+    <!-- JAVASCRIPT -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+
+    <script type="module" src="/static/js/administrador/dashboard.js"></script>
+    <script type="module" src="/static/js/administrador/inventario.js"></script>
+    <script type="module" src="/static/js/administrador/historico.js"></script>
+    <script type="module" src="/static/js/administrador/exportacion.js"></script>
+
+</body>
+</html>
