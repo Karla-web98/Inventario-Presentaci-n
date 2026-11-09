@@ -1,30 +1,28 @@
+
 "use strict";
 
 // =========================================================
 // INVENTARIO DEL ADMINISTRADOR
 // =========================================================
 
-import { eliminarContenedor } from "../api/contenedores.js";
+import {
+    listarContenedores,
+    eliminarContenedor
+} from "../api/contenedores.js";
 
-const INVENTORY_STORAGE_KEY = "inventario_operador_registros";
+// =========================================================
+// OBTENER INVENTARIO DEL SERVIDOR
+// =========================================================
+
+async function obtenerInventario() {
+    const registros = await listarContenedores();
+
+    return Array.isArray(registros) ? registros : [];
+}
 
 // =========================================================
 // UTILIDADES
 // =========================================================
-
-function obtenerInventario() {
-    try {
-        const registros = JSON.parse(
-            localStorage.getItem(INVENTORY_STORAGE_KEY) || "[]"
-        );
-
-        return Array.isArray(registros) ? registros : [];
-
-    } catch (error) {
-        console.error("Error al obtener inventario:", error);
-        return [];
-    }
-}
 
 function escaparInventario(valor) {
     return String(valor ?? "")
@@ -178,7 +176,9 @@ function obtenerClaseEstadoInventario(estado) {
 // =========================================================
 
 function actualizarFiltroPatios(registros) {
-    const filtro = document.querySelector("#inventoryPatioFilter");
+    const filtro = document.querySelector(
+        "#inventoryPatioFilter"
+    );
 
     if (!filtro) {
         return;
@@ -198,6 +198,7 @@ function actualizarFiltroPatios(registros) {
 
     filtro.innerHTML = `
         <option value="">Todos los patios</option>
+
         ${patios.map(patio => `
             <option value="${escaparInventario(patio)}">
                 ${escaparInventario(patio)}
@@ -260,12 +261,10 @@ function filtrarInventario(registros) {
             spot.includes(busqueda);
 
         const coincideEstado =
-            !estado ||
-            estadoRegistro === estado;
+            !estado || estadoRegistro === estado;
 
         const coincidePatio =
-            !patio ||
-            patioRegistro === patio;
+            !patio || patioRegistro === patio;
 
         return (
             coincideBusqueda &&
@@ -295,14 +294,15 @@ function ordenarInventario(registros) {
 // MOSTRAR INVENTARIO
 // =========================================================
 
-function mostrarInventario() {
+async function mostrarInventario() {
     const tabla = document.querySelector("#inventoryTable");
 
     if (!tabla) {
+        console.error("No se encontró la tabla #inventoryTable.");
         return;
     }
 
-    const registros = obtenerInventario();
+    const registros = await obtenerInventario();
 
     actualizarFiltroPatios(registros);
 
@@ -405,8 +405,8 @@ function mostrarInventario() {
 // ABRIR DETALLE
 // =========================================================
 
-function abrirDetalleContenedor(identificador) {
-    const registros = obtenerInventario();
+async function abrirDetalleContenedor(identificador) {
+    const registros = await obtenerInventario();
 
     const registro = registros.find(item => {
         const id = obtenerDatoInventario(item, [
@@ -444,34 +444,27 @@ function abrirDetalleContenedor(identificador) {
         "comentarios"
     ]);
 
-    // =====================================================
-    // FOTOGRAFÍAS GENERALES
-    // =====================================================
-
+    // Fotografías generales
     const fotos = Array.isArray(registro.fotografias)
         ? registro.fotografias
         : Array.isArray(registro.fotos)
             ? registro.fotos
             : [];
 
-    // =====================================================
-    // FOTOGRAFÍA DEL SELLO
-    // =====================================================
-
+    // Fotografía del sello
     const fotografiaSello = registro.fotografiaSello || null;
 
     const fuenteSello = fotografiaSello
         ? (
             typeof fotografiaSello === "string"
                 ? fotografiaSello
-                : fotografiaSello.data || fotografiaSello.url || ""
+                : fotografiaSello.data ||
+                  fotografiaSello.url ||
+                  ""
         )
         : "";
 
-    // =====================================================
-    // CONTENIDO DEL DETALLE
-    // =====================================================
-
+    // Contenido del detalle
     contenedor.innerHTML = `
         <div class="card" style="margin-bottom: 20px;">
 
@@ -481,51 +474,37 @@ function abrirDetalleContenedor(identificador) {
 
                 <div>
                     <span>CAJA</span>
-                    <strong>
-                        ${escaparInventario(numero)}
-                    </strong>
+                    <strong>${escaparInventario(numero)}</strong>
                 </div>
 
                 <div>
                     <span>CARRIER</span>
-                    <strong>
-                        ${escaparInventario(carrier)}
-                    </strong>
+                    <strong>${escaparInventario(carrier)}</strong>
                 </div>
 
                 <div>
                     <span>STATUS</span>
-                    <strong>
-                        ${escaparInventario(estado)}
-                    </strong>
+                    <strong>${escaparInventario(estado)}</strong>
                 </div>
 
                 <div>
                     <span>UBICACIÓN</span>
-                    <strong>
-                        ${escaparInventario(ubicacion)}
-                    </strong>
+                    <strong>${escaparInventario(ubicacion)}</strong>
                 </div>
 
                 <div>
                     <span>NÚMERO DE SPOT</span>
-                    <strong>
-                        ${escaparInventario(spot)}
-                    </strong>
+                    <strong>${escaparInventario(spot)}</strong>
                 </div>
 
                 <div>
                     <span>PATIO</span>
-                    <strong>
-                        ${escaparInventario(patio)}
-                    </strong>
+                    <strong>${escaparInventario(patio)}</strong>
                 </div>
 
                 <div>
                     <span>FECHA DE REGISTRO</span>
-                    <strong>
-                        ${formatearFechaInventario(fecha)}
-                    </strong>
+                    <strong>${formatearFechaInventario(fecha)}</strong>
                 </div>
 
             </div>
@@ -534,9 +513,7 @@ function abrirDetalleContenedor(identificador) {
 
                 <span>OBSERVACIONES</span>
 
-                <p>
-                    ${escaparInventario(observaciones)}
-                </p>
+                <p>${escaparInventario(observaciones)}</p>
 
             </div>
 
@@ -552,7 +529,6 @@ function abrirDetalleContenedor(identificador) {
                         <div class="admin-photos-grid">
 
                             ${fotos.map((foto, index) => {
-
                                 const fuente =
                                     typeof foto === "string"
                                         ? foto
@@ -562,7 +538,6 @@ function abrirDetalleContenedor(identificador) {
 
                                 return `
                                     <figure>
-
                                         <img
                                             src="${escaparInventario(fuente)}"
                                             alt="Fotografía ${index + 1}"
@@ -572,10 +547,8 @@ function abrirDetalleContenedor(identificador) {
                                         <figcaption>
                                             Fotografía ${index + 1}
                                         </figcaption>
-
                                     </figure>
                                 `;
-
                             }).join("")}
 
                         </div>
@@ -716,51 +689,56 @@ function cerrarVisualizador() {
 // ELIMINAR CONTENEDOR
 // =========================================================
 
-function eliminarRegistroInventario(id) {
-    const registros = obtenerInventario();
+async function eliminarRegistroInventario(id) {
+    try {
+        const registros = await obtenerInventario();
 
-    const registro = registros.find(item =>
-        String(item.id) === String(id)
-    );
+        const registro = registros.find(item =>
+            String(item.id) === String(id)
+        );
 
-    if (!registro) {
-        alert("No se encontró el contenedor.");
-        return;
+        if (!registro) {
+            alert("No se encontró el contenedor.");
+            return;
+        }
+
+        const numero = obtenerNumeroCaja(registro);
+
+        const confirmar = window.confirm(
+            `¿Estás seguro de eliminar la caja ${numero}?\n\n` +
+            "Esta acción no se puede deshacer."
+        );
+
+        if (!confirmar) {
+            return;
+        }
+
+        await eliminarContenedor(id);
+
+        await mostrarInventario();
+
+        const detalle = document.querySelector("#containerDetail");
+
+        if (detalle) {
+            detalle.innerHTML = "";
+        }
+
+        window.dispatchEvent(
+            new CustomEvent("inventario:actualizado")
+        );
+
+        alert(
+            `La caja ${numero} fue eliminada correctamente.`
+        );
+
+    } catch (error) {
+        console.error("Error al eliminar contenedor:", error);
+
+        alert(
+            error.message ||
+            "No fue posible eliminar el contenedor."
+        );
     }
-
-    const numero = obtenerNumeroCaja(registro);
-
-    const confirmar = window.confirm(
-        `¿Estás seguro de eliminar la caja ${numero}?\n\n` +
-        "Esta acción no se puede deshacer."
-    );
-
-    if (!confirmar) {
-        return;
-    }
-
-    eliminarContenedor(id);
-
-    mostrarInventario();
-
-    const detalle = document.querySelector(
-        "#containerDetail"
-    );
-
-    if (detalle) {
-        detalle.innerHTML = "";
-    }
-
-    // Notificar al resto de módulos del administrador.
-    window.dispatchEvent(
-        new StorageEvent("storage", {
-            key: INVENTORY_STORAGE_KEY
-        })
-    );
-
-    alert(
-        `La caja ${numero} fue eliminada correctamente.`
-    );
 }
 
 // =========================================================
@@ -798,9 +776,7 @@ function cambiarVistaAdministrador(nombreVista) {
         detalle: "Detalle del contenedor"
     };
 
-    const titulo = document.querySelector(
-        "#adminPageTitle"
-    );
+    const titulo = document.querySelector("#adminPageTitle");
 
     if (titulo) {
         titulo.textContent =
@@ -833,19 +809,31 @@ function configurarEventosInventario() {
         "#containerDetail"
     );
 
+    // Actualizar tabla
+    const actualizarInventario = () => {
+        mostrarInventario().catch(error => {
+            console.error("Error al actualizar inventario:", error);
+
+            alert(
+                error.message ||
+                "No fue posible cargar el inventario."
+            );
+        });
+    };
+
     busqueda?.addEventListener(
         "input",
-        mostrarInventario
+        actualizarInventario
     );
 
     estado?.addEventListener(
         "change",
-        mostrarInventario
+        actualizarInventario
     );
 
     patio?.addEventListener(
         "change",
-        mostrarInventario
+        actualizarInventario
     );
 
     // ---------------------------------------------
@@ -853,25 +841,31 @@ function configurarEventosInventario() {
     // ---------------------------------------------
 
     tabla?.addEventListener("click", evento => {
-
-        // VER DETALLE
-        const botonDetalle =
-            evento.target.closest("[data-detail-id]");
+        const botonDetalle = evento.target.closest(
+            "[data-detail-id]"
+        );
 
         if (botonDetalle) {
             abrirDetalleContenedor(
                 botonDetalle.dataset.detailId
-            );
+            ).catch(error => {
+                console.error("Error al abrir detalle:", error);
+
+                alert(
+                    error.message ||
+                    "No fue posible cargar el detalle."
+                );
+            });
 
             return;
         }
 
-        // ELIMINAR
-        const botonEliminar =
-            evento.target.closest("[data-delete-id]");
+        const botonEliminar = evento.target.closest(
+            "[data-delete-id]"
+        );
 
         if (botonEliminar) {
-            eliminarRegistroInventario(
+            void eliminarRegistroInventario(
                 botonEliminar.dataset.deleteId
             );
         }
@@ -891,7 +885,10 @@ function configurarEventosInventario() {
         }
     });
 
-    // Cerrar el visualizador con Escape.
+    // ---------------------------------------------
+    // CERRAR VISUALIZADOR CON ESCAPE
+    // ---------------------------------------------
+
     document.addEventListener("keydown", evento => {
         if (evento.key === "Escape") {
             cerrarVisualizador();
@@ -905,25 +902,11 @@ function configurarEventosInventario() {
     document
         .querySelectorAll('[data-view="inventario"]')
         .forEach(boton => {
-
             boton.addEventListener(
                 "click",
-                mostrarInventario
+                actualizarInventario
             );
-
         });
-
-    // ---------------------------------------------
-    // ACTUALIZAR CAMBIOS DE OTRAS PESTAÑAS
-    // ---------------------------------------------
-
-    window.addEventListener("storage", evento => {
-
-        if (evento.key === INVENTORY_STORAGE_KEY) {
-            mostrarInventario();
-        }
-
-    });
 }
 
 // =========================================================
@@ -933,7 +916,26 @@ function configurarEventosInventario() {
 function iniciarInventarioAdministrador() {
     configurarEventosInventario();
 
-    mostrarInventario();
+    mostrarInventario().catch(error => {
+        console.error("Error al iniciar inventario:", error);
+
+        const tabla = document.querySelector("#inventoryTable");
+
+        if (tabla) {
+            tabla.innerHTML = `
+                <tr>
+                    <td colspan="8" class="admin-empty">
+                        No fue posible cargar el inventario.
+                    </td>
+                </tr>
+            `;
+        }
+
+        alert(
+            error.message ||
+            "No fue posible cargar el inventario."
+        );
+    });
 
     console.log(
         "Inventario del administrador iniciado correctamente."

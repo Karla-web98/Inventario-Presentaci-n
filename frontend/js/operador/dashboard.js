@@ -35,7 +35,7 @@ function mostrarMensaje(elemento, mensaje, tipo = "error") {
     elemento.className = `message ${tipo}`;
 }
 
-function cambiarVista(vista) {
+async function cambiarVista(vista) {
     const vistas = {
         dashboard: {
             elemento: "#dashboardView",
@@ -67,8 +67,18 @@ function cambiarVista(vista) {
         );
     });
 
-    if (vista === "dashboard") actualizarDashboard();
-    if (vista === "historial") renderizarHistorial();
+    try {
+        if (vista === "dashboard") {
+            await actualizarDashboard();
+        }
+
+        if (vista === "historial") {
+            await renderizarHistorial();
+        }
+    } catch (error) {
+        console.error("Error al cambiar de vista:", error);
+        window.alert(error.message || "No fue posible cargar los registros.");
+    }
 }
 
 function cambiarPaso(numero) {
@@ -83,30 +93,30 @@ function cambiarPaso(numero) {
     });
 }
 
-function actualizarDashboard() {
-    const registros = listarContenedores();
+async function actualizarDashboard() {
+    const registros = await listarContenedores();
 
     const totalFotos = registros.reduce(
-    (total, registro) =>
-        total +
-        (registro.fotografias?.length || 0) +
-        (registro.fotografiaSello ? 1 : 0),
-    0
-);
+        (total, registro) =>
+            total +
+            (registro.fotografias?.length || 0) +
+            (registro.fotografiaSello ? 1 : 0),
+        0
+    );
 
     $("#totalContainers").textContent = registros.length;
     $("#totalPhotos").textContent = totalFotos;
 
     if (registros.length > 0) {
         const ultimo = registros[0];
-        $("#lastRegistration").textContent = `${ultimo.fecha} ${ultimo.hora}`;
+        $("#lastRegistration").textContent =
+            `${ultimo.fecha || ""} ${ultimo.hora || ""}`.trim();
     } else {
         $("#lastRegistration").textContent = "Sin registros";
     }
 
-    renderizarRecientes();
+    await renderizarRecientes();
 }
-
 
 function limpiarFormulario() {
     $("#ocrForm").reset();
@@ -144,7 +154,6 @@ function inicializarPatioUbicacion() {
     patio.addEventListener("change", () => {
         const opciones = ubicacionesPorPatio[patio.value] || [];
 
-        // Limpiar la ubicación anterior.
         ubicacion.innerHTML = "";
 
         const opcionInicial = document.createElement("option");
@@ -155,7 +164,6 @@ function inicializarPatioUbicacion() {
 
         ubicacion.appendChild(opcionInicial);
 
-        // Agregar únicamente las ubicaciones del patio seleccionado.
         opciones.forEach(nombre => {
             const opcion = document.createElement("option");
             opcion.value = nombre;
@@ -166,7 +174,6 @@ function inicializarPatioUbicacion() {
         ubicacion.disabled = opciones.length === 0;
     });
 
-    // Estado inicial del campo.
     patio.value = "";
     patio.dispatchEvent(new Event("change"));
 }
@@ -174,13 +181,13 @@ function inicializarPatioUbicacion() {
 function inicializarNavegacion() {
     document.querySelectorAll("[data-view]").forEach(boton => {
         boton.addEventListener("click", () => {
-            cambiarVista(boton.dataset.view);
+            void cambiarVista(boton.dataset.view);
         });
     });
 
     document.querySelectorAll("[data-go]").forEach(boton => {
         boton.addEventListener("click", () => {
-            cambiarVista(boton.dataset.go);
+            void cambiarVista(boton.dataset.go);
         });
     });
 }
@@ -202,7 +209,8 @@ function inicializarOCR() {
         boton.disabled = true;
         boton.textContent = "Procesando...";
         mensaje.className = "message info";
-        mensaje.textContent = "Analizando fotografía. Esto puede tardar unos segundos.";
+        mensaje.textContent =
+            "Analizando fotografía. Esto puede tardar unos segundos.";
 
         try {
             const resultado = await procesarOCR(archivo, modo);
@@ -210,7 +218,8 @@ function inicializarOCR() {
             if (!resultado.encontrado) {
                 mostrarMensaje(
                     mensaje,
-                    resultado.mensaje || "No se encontró un identificador. Intenta otra fotografía."
+                    resultado.mensaje ||
+                    "No se encontró un identificador. Intenta otra fotografía."
                 );
                 return;
             }
@@ -247,7 +256,10 @@ function inicializarPasoUno() {
         if (!validacion.valido) {
             const mensaje = $("#ocrMessage");
             mostrarMensaje(mensaje, validacion.errores.join(" "));
-            mensaje.scrollIntoView({ behavior: "smooth", block: "center" });
+            mensaje.scrollIntoView({
+                behavior: "smooth",
+                block: "center"
+            });
             return;
         }
 
@@ -255,22 +267,28 @@ function inicializarPasoUno() {
     });
 }
 
-
 function inicializarPasoDos() {
-    // Mostrar u ocultar la fotografía del sello según el status.
     $("#containerStatus").addEventListener("change", event => {
         actualizarRequisitoSello(event.target.value);
     });
 
-    // Fotografías generales.
     $("#evidenceInput").addEventListener("change", async event => {
-        await agregarFotografias(event.target.files);
+        try {
+            await agregarFotografias(event.target.files);
+        } catch (error) {
+            mostrarMensaje($("#evidenceMessage"), error.message);
+        }
+
         event.target.value = "";
     });
 
-    // Fotografía independiente del sello.
     $("#sealEvidenceInput").addEventListener("change", async event => {
-        await agregarFotografiaSello(event.target.files[0]);
+        try {
+            await agregarFotografiaSello(event.target.files[0]);
+        } catch (error) {
+            mostrarMensaje($("#sealEvidenceMessage"), error.message);
+        }
+
         event.target.value = "";
     });
 
@@ -280,13 +298,10 @@ function inicializarPasoDos() {
         const datos = obtenerDatosFormulario();
 
         if (!validarEvidencias()) {
-            const mensaje = $("#evidenceMessage");
-
             mostrarMensaje(
-                mensaje,
+                $("#evidenceMessage"),
                 "Debes agregar al menos una fotografía general para continuar."
             );
-
             return;
         }
 
@@ -316,11 +331,10 @@ function inicializarPasoDos() {
     });
 }
 
-
 function inicializarPasoTres() {
     $("#backToEvidence").addEventListener("click", () => cambiarPaso(2));
 
-    $("#saveRegistration").addEventListener("click", () => {
+    $("#saveRegistration").addEventListener("click", async () => {
         const boton = $("#saveRegistration");
         const mensaje = $("#confirmationMessage");
 
@@ -353,7 +367,7 @@ function inicializarPasoTres() {
         boton.textContent = "Guardando...";
 
         try {
-            guardarRegistro(
+            await guardarRegistro(
                 datos,
                 fotografias,
                 fotografiaSello
@@ -365,24 +379,22 @@ function inicializarPasoTres() {
                 "success"
             );
 
-            actualizarDashboard();
+            await actualizarDashboard();
 
             boton.textContent = "Registro guardado";
 
             window.alert("El contenedor se registró correctamente.");
 
             limpiarFormulario();
-            cambiarVista("historial");
+            await cambiarVista("historial");
 
         } catch (error) {
             mostrarMensaje(mensaje, error.message);
-
             boton.disabled = false;
             boton.textContent = "Confirmar y guardar";
         }
     });
 }
-
 
 function inicializarDatosOperador() {
     const nombre = "Operador";
@@ -404,7 +416,7 @@ function inicializarDatosOperador() {
     $("#shiftManager").textContent = "Por asignar";
 }
 
-function iniciarAplicacion() {
+async function iniciarAplicacion() {
     inicializarDatosOperador();
     inicializarNavegacion();
     inicializarPatioUbicacion();
@@ -415,8 +427,14 @@ function iniciarAplicacion() {
     inicializarPasoTres();
     inicializarHistorial();
 
-    actualizarDashboard();
-    cambiarVista("dashboard");
+    await cambiarVista("dashboard");
 }
 
-document.addEventListener("DOMContentLoaded", iniciarAplicacion);
+document.addEventListener("DOMContentLoaded", () => {
+    iniciarAplicacion().catch(error => {
+        console.error("Error al iniciar la aplicación:", error);
+        window.alert(
+            error.message || "No fue posible cargar el inventario del servidor."
+        );
+    });
+});

@@ -1,12 +1,12 @@
-
 "use strict";
+
+import { listarContenedores } from "../api/contenedores.js";
 
 // =====================================================
 // CONFIGURACIÓN
 // =====================================================
 
-const EXPORTAR_INVENTARIO_KEY = "inventario_operador_registros";
-const EXPORTAR_CORTES_KEY = "inventario_admin_cortes";
+const API_CORTES = "/api/cortes";
 
 let graficosReportes = {
     estados: null,
@@ -14,34 +14,45 @@ let graficosReportes = {
     fechas: null
 };
 
+let registrosActuales = [];
+let cortesExportables = [];
+
 // =====================================================
-// 1. LECTURA Y NORMALIZACIÓN
+// 1. CONSULTAR DATOS DEL SERVIDOR
 // =====================================================
 
-function leerDatosExportacion(clave) {
-    try {
-        const datos = JSON.parse(localStorage.getItem(clave) || "[]");
-        return Array.isArray(datos) ? datos : [];
-    } catch (error) {
-        console.error(`Error al leer ${clave}:`, error);
-        return [];
-    }
+async function obtenerRegistrosActuales() {
+    return await listarContenedores();
 }
 
-function obtenerRegistrosActuales() {
-    return leerDatosExportacion(EXPORTAR_INVENTARIO_KEY);
+async function obtenerCortesHistoricos() {
+    const response = await fetch(API_CORTES);
+    const resultado = await response.json();
+
+    if (!response.ok || resultado.ok === false) {
+        throw new Error(
+            resultado.error || "No fue posible consultar los cortes históricos."
+        );
+    }
+
+    return Array.isArray(resultado.cortes)
+        ? resultado.cortes
+        : [];
 }
 
 function obtenerFotografias(registro) {
-    if (Array.isArray(registro.fotografias)) {
-        return registro.fotografias;
-    }
+    const fotografias = Array.isArray(registro.fotografias)
+        ? registro.fotografias
+        : Array.isArray(registro.fotos)
+            ? registro.fotos
+            : [];
 
-    if (Array.isArray(registro.fotos)) {
-        return registro.fotos;
-    }
+    const tieneSello = Boolean(
+        registro.fotografiaSello ||
+        registro.fotoSello
+    );
 
-    return [];
+    return fotografias.length + (tieneSello ? 1 : 0);
 }
 
 function normalizarTexto(valor) {
@@ -53,7 +64,11 @@ function normalizarTexto(valor) {
 }
 
 function obtenerEstado(registro) {
-    return String(registro.estado || registro.status || "Sin estado").trim();
+    return String(
+        registro.estado ||
+        registro.status ||
+        "Sin estado"
+    ).trim();
 }
 
 function obtenerFechaRegistro(registro) {
@@ -65,6 +80,11 @@ function obtenerFechaRegistro(registro) {
 
     if (Number.isNaN(fechaValida.getTime())) {
         return String(fecha).slice(0, 10);
+    }
+
+    // Si ya viene como fecha YYYY-MM-DD, conservarla.
+    if (/^\d{4}-\d{2}-\d{2}$/.test(String(fecha))) {
+        return String(fecha);
     }
 
     return fechaValida.toISOString().slice(0, 10);
@@ -81,6 +101,7 @@ function obtenerEncabezadosInventario() {
         "ESTADO",
         "UBICACION",
         "PATIO",
+        "SPOT",
         "OPERADOR",
         "FECHA",
         "HORA",
@@ -96,11 +117,12 @@ function prepararRegistroExcel(registro) {
         obtenerEstado(registro),
         registro.ubicacion ?? "",
         registro.patio ?? "",
+        registro.spot ?? registro.numeroSpot ?? registro.numero_spot ?? "",
         registro.operador ?? "",
         registro.fecha ?? obtenerFechaRegistro(registro),
         registro.hora ?? "",
         registro.observaciones ?? "",
-        obtenerFotografias(registro).length
+        obtenerFotografias(registro)
     ];
 }
 
@@ -117,6 +139,7 @@ function calcularEstadisticas(registros) {
     ];
 
     const conteoEstados = {};
+
     estados.forEach(estado => {
         conteoEstados[estado] = 0;
     });
@@ -125,11 +148,12 @@ function calcularEstadisticas(registros) {
     const conteoFechas = {};
 
     registros.forEach(registro => {
-        const estado = obtenerEstado(registro);
-        const estadoNormalizado = normalizarTexto(estado);
+        const estadoNormalizado = normalizarTexto(
+            obtenerEstado(registro)
+        );
 
         const estadoCoincidente = estados.find(
-            item => normalizarTexto(item) === estadoNormalizado
+            estado => normalizarTexto(estado) === estadoNormalizado
         );
 
         if (estadoCoincidente) {
@@ -146,7 +170,7 @@ function calcularEstadisticas(registros) {
     return {
         total: registros.length,
         totalFotos: registros.reduce(
-            (total, registro) => total + obtenerFotografias(registro).length,
+            (total, registro) => total + obtenerFotografias(registro),
             0
         ),
         estados: conteoEstados,
@@ -172,8 +196,7 @@ function destruirGraficos() {
 }
 
 function crearGraficosReportes() {
-    const registros = obtenerRegistrosActuales();
-    const estadisticas = calcularEstadisticas(registros);
+    const estadisticas = calcularEstadisticas(registrosActuales);
 
     const canvasEstados = document.querySelector("#chartEstados");
     const canvasPatios = document.querySelector("#chartPatios");
@@ -285,85 +308,80 @@ function crearGraficosReportes() {
     });
 }
 
+
 // =====================================================
 // 5. GENERAR HOJAS DE EXCEL
 // =====================================================
 
-function aplicarFormatoHoja(hoja, anchos) {
-    if (!hoja["!ref"]) return;
+function aplicarFormatoExcel(hoja, anchos) {
+    hoja.columns = anchos.map(width => ({ width }));
 
-    hoja["!cols"] = anchos.map(ancho => ({ wch: ancho }));
-    hoja["!rows"] = [{ hpt: 30 }];
+    const encabezado = hoja.getRow(1);
+    encabezado.height = 30;
 
-    const rango = XLSX.utils.decode_range(hoja["!ref"]);
+    encabezado.eachCell(celda => {
+        celda.font = {
+            bold: true,
+            color: { argb: "FFFFFFFF" },
+            size: 11
+        };
 
-    for (let columna = rango.s.c; columna <= rango.e.c; columna++) {
-        const celda = XLSX.utils.encode_cell({
-            r: 0,
-            c: columna
-        });
+        celda.fill = {
+            type: "pattern",
+            pattern: "solid",
+            fgColor: { argb: "FF2563EB" }
+        };
 
-        if (hoja[celda]) {
-            hoja[celda].s = {
-                font: {
-                    bold: true,
-                    color: { rgb: "FFFFFF" },
-                    sz: 11
-                },
-                fill: {
-                    patternType: "solid",
-                    fgColor: { rgb: "2563EB" }
-                },
-                alignment: {
-                    horizontal: "center",
-                    vertical: "center",
-                    wrapText: true
+        celda.alignment = {
+            horizontal: "center",
+            vertical: "middle",
+            wrapText: true
+        };
+    });
+
+    for (let fila = 2; fila <= hoja.rowCount; fila++) {
+        const row = hoja.getRow(fila);
+
+        row.eachCell(celda => {
+            celda.font = {
+                color: { argb: "FF334155" },
+                size: 10
+            };
+
+            celda.fill = {
+                type: "pattern",
+                pattern: "solid",
+                fgColor: {
+                    argb: fila % 2 === 0 ? "FFEFF6FF" : "FFFFFFFF"
                 }
             };
-        }
+
+            celda.alignment = {
+                vertical: "middle",
+                wrapText: true
+            };
+
+            celda.border = {
+                bottom: {
+                    style: "thin",
+                    color: { argb: "FFE2E8F0" }
+                }
+            };
+        });
     }
 
-    for (let fila = 1; fila <= rango.e.r; fila++) {
-        for (let columna = rango.s.c; columna <= rango.e.c; columna++) {
-            const celda = XLSX.utils.encode_cell({
-                r: fila,
-                c: columna
-            });
-
-            if (hoja[celda]) {
-                hoja[celda].s = {
-                    font: {
-                        color: { rgb: "334155" },
-                        sz: 10
-                    },
-                    fill: {
-                        patternType: "solid",
-                        fgColor: {
-                            rgb: fila % 2 === 0 ? "EFF6FF" : "FFFFFF"
-                        }
-                    },
-                    alignment: {
-                        vertical: "center",
-                        wrapText: true
-                    },
-                    border: {
-                        bottom: {
-                            style: "thin",
-                            color: { rgb: "E2E8F0" }
-                        }
-                    }
-                };
-            }
-        }
+    if (hoja.rowCount > 1) {
+        hoja.autoFilter = {
+            from: "A1",
+            to: `${hoja.getColumn(hoja.columnCount).letter}${hoja.rowCount}`
+        };
     }
 
-    hoja["!autofilter"] = {
-        ref: XLSX.utils.encode_range(rango)
-    };
+    hoja.views = [{ state: "frozen", ySplit: 1 }];
 }
 
-function crearHojaResumen(estadisticas) {
-    const filas = [
+function crearHojaResumen(hoja, estadisticas) {
+    hoja.addRows([
         ["RESUMEN DEL INVENTARIO", "CANTIDAD"],
         ["Total de cajas", estadisticas.total],
         ["Total de fotografías", estadisticas.totalFotos],
@@ -371,352 +389,604 @@ function crearHojaResumen(estadisticas) {
         ["Cargado Prod", estadisticas.estados["Cargado Prod"]],
         ["Equipo vacío", estadisticas.estados["Equipo vacío"]],
         ["Dañado", estadisticas.estados["Dañado"]]
-    ];
+    ]);
 
-    const hoja = XLSX.utils.aoa_to_sheet(filas);
-    aplicarFormatoHoja(hoja, [30, 20]);
-
-    return hoja;
+    aplicarFormatoExcel(hoja, [30, 20]);
 }
 
-function crearHojaEstadisticas(estadisticas) {
-    const filas = [
-        ["ESTADO", "CANTIDAD"],
-        ...Object.entries(estadisticas.estados)
-    ];
+function crearHojaInventario(hoja, registros) {
+    hoja.addRow(obtenerEncabezadosInventario());
 
-    const hoja = XLSX.utils.aoa_to_sheet(filas);
-    aplicarFormatoHoja(hoja, [25, 18]);
-
-    return hoja;
-}
-
-function crearHojaPatios(estadisticas) {
-    const filas = [
-        ["PATIO", "CANTIDAD DE CAJAS"],
-        ...Object.entries(estadisticas.patios)
-    ];
-
-    const hoja = XLSX.utils.aoa_to_sheet(filas);
-    aplicarFormatoHoja(hoja, [25, 22]);
-
-    return hoja;
-}
-
-function descargarLibroExcel(nombreArchivo, registros) {
-    if (typeof XLSX === "undefined") {
-        alert("No se pudo cargar la librería de Excel. Verifica tu conexión a internet.");
-        return;
-    }
-
-    const estadisticas = calcularEstadisticas(registros);
-    const libro = XLSX.utils.book_new();
-
-    // Hoja 1: Resumen
-    XLSX.utils.book_append_sheet(
-        libro,
-        crearHojaResumen(estadisticas),
-        "Resumen"
-    );
-
-    // Hoja 2: Inventario completo
-    const filasInventario = [
-        obtenerEncabezadosInventario(),
-        ...registros.map(prepararRegistroExcel)
-    ];
-
-    const hojaInventario = XLSX.utils.aoa_to_sheet(filasInventario);
-
-    aplicarFormatoHoja(
-        hojaInventario,
-        [22, 18, 18, 22, 18, 22, 16, 14, 35, 24]
-    );
-
-    XLSX.utils.book_append_sheet(
-        libro,
-        hojaInventario,
-        "Inventario"
-    );
-
-    // Hoja 3: Estadísticas por estado
-    XLSX.utils.book_append_sheet(
-        libro,
-        crearHojaEstadisticas(estadisticas),
-        "Estadisticas"
-    );
-
-    // Hoja 4: Cajas por patio
-    XLSX.utils.book_append_sheet(
-        libro,
-        crearHojaPatios(estadisticas),
-        "Por patio"
-    );
-
-    XLSX.writeFile(libro, nombreArchivo, {
-        compression: true
-    });
-}
-
-// =====================================================
-// 6. EXPORTAR INVENTARIO ACTUAL
-// =====================================================
-
-function exportarInventarioActual() {
-    const registros = obtenerRegistrosActuales();
-
-    if (registros.length === 0) {
-        alert("No hay registros para exportar.");
-        return;
-    }
-
-    const fecha = new Date().toISOString().slice(0, 10);
-
-    descargarLibroExcel(
-        `inventario_actual_${fecha}.xlsx`,
-        registros
-    );
-}
-
-// =====================================================
-// 7. EXPORTAR CORTE HISTÓRICO
-// =====================================================
-
-function exportarCorteHistorico(idCorte) {
-    const cortes = leerDatosExportacion(EXPORTAR_CORTES_KEY);
-
-    const corte = cortes.find(
-        item => String(item.id) === String(idCorte)
-    );
-
-    if (!corte) {
-        alert("No se encontró el corte histórico seleccionado.");
-        return;
-    }
-
-    const registros = Array.isArray(corte.registros)
-        ? corte.registros
-        : [];
-
-    const fecha = String(corte.fecha || "sin_fecha")
-        .replace(/[^\w-]/g, "_");
-
-    descargarLibroExcel(
-        `inventario_historico_${fecha}.xlsx`,
-        registros
-    );
-}
-
-// =====================================================
-// 8. CONSTRUIR INTERFAZ DE REPORTES
-// =====================================================
-
-function prepararInterfazExportacion() {
-    const seccion = document.querySelector("#view-reportes");
-
-    if (!seccion) return;
-
-    seccion.innerHTML = `
-        <div class="admin-page-heading">
-            <div>
-                <h2>Reportes y estadísticas</h2>
-                <p>
-                    Consulta el comportamiento del inventario
-                    y descarga la información en Excel.
-                </p>
-            </div>
-        </div>
-
-        <div class="report-summary-grid">
-            <article class="report-summary-card">
-                <span>Total de cajas</span>
-                <strong id="reportTotal">0</strong>
-            </article>
-
-            <article class="report-summary-card">
-                <span>Fotografías</span>
-                <strong id="reportFotos">0</strong>
-            </article>
-        </div>
-
-        <div class="admin-section-header">
-            <div>
-                <h2>Estadísticas del inventario</h2>
-                <p>Distribución de cajas según su estado y ubicación.</p>
-            </div>
-        </div>
-
-        <div class="reports-charts-grid">
-            <article class="report-chart-card">
-                <h3>Cajas por estado</h3>
-                <div class="report-chart-container">
-                    <canvas id="chartEstados"></canvas>
-                </div>
-            </article>
-
-            <article class="report-chart-card">
-                <h3>Cajas por patio</h3>
-                <div class="report-chart-container">
-                    <canvas id="chartPatios"></canvas>
-                </div>
-            </article>
-
-            <article class="report-chart-card report-chart-wide">
-                <h3>Registros por fecha</h3>
-                <div class="report-chart-container">
-                    <canvas id="chartFechas"></canvas>
-                </div>
-            </article>
-        </div>
-
-        <div class="admin-section-header">
-            <div>
-                <h2>Exportar información</h2>
-                <p>Descarga el inventario y sus estadísticas en un archivo Excel.</p>
-            </div>
-        </div>
-
-        <div class="export-section">
-            <article class="export-card">
-                <div class="export-card-icon">📦</div>
-
-                <div class="export-card-content">
-                    <h3>Inventario actual</h3>
-                    <p>
-                        Incluye resumen, inventario completo,
-                        estadísticas por estado y cajas por patio.
-                    </p>
-
-                    <button
-                        type="button"
-                        id="exportCurrentInventory"
-                        class="btn-export"
-                    >
-                        Descargar Excel
-                    </button>
-                </div>
-            </article>
-
-            <article class="export-card">
-                <div class="export-card-icon">📅</div>
-
-                <div class="export-card-content">
-                    <h3>Histórico de inventario</h3>
-                    <p>
-                        Selecciona un corte histórico para
-                        descargar los registros que contenía.
-                    </p>
-
-                    <div class="export-history-controls">
-                        <select id="exportHistorySelect">
-                            <option value="">
-                                Selecciona un corte histórico
-                            </option>
-                        </select>
-
-                        <button
-                            type="button"
-                            id="exportHistoryButton"
-                            class="btn-export"
-                            disabled
-                        >
-                            Descargar Excel
-                        </button>
-                    </div>
-                </div>
-            </article>
-        </div>
-
-        <p class="export-note">
-            El archivo Excel incluye la información y los datos
-            utilizados para generar los gráficos. Las fotografías
-            no se insertan en el archivo.
-        </p>
-    `;
-
-    document.querySelector("#exportCurrentInventory")
-        ?.addEventListener("click", exportarInventarioActual);
-
-    const selector = document.querySelector("#exportHistorySelect");
-    const boton = document.querySelector("#exportHistoryButton");
-
-    selector?.addEventListener("change", () => {
-        if (boton) boton.disabled = !selector.value;
+    registros.forEach(registro => {
+        hoja.addRow(prepararRegistroExcel(registro));
     });
 
-    boton?.addEventListener("click", () => {
-        if (selector?.value) {
-            exportarCorteHistorico(selector.value);
+    aplicarFormatoExcel(
+        hoja,
+        [22, 18, 18, 22, 18, 14, 22, 16, 14, 35, 24]
+    );
+}
+
+function crearHojaEstadisticas(hoja, estadisticas) {
+    hoja.addRow(["ESTADO", "CANTIDAD"]);
+
+    Object.entries(estadisticas.estados).forEach(([estado, cantidad]) => {
+        hoja.addRow([estado, cantidad]);
+    });
+
+    aplicarFormatoExcel(hoja, [25, 18]);
+}
+
+function crearHojaPatios(hoja, estadisticas) {
+    hoja.addRow(["PATIO", "CANTIDAD DE CAJAS"]);
+
+    Object.entries(estadisticas.patios).forEach(([patio, cantidad]) => {
+        hoja.addRow([patio, cantidad]);
+    });
+
+    aplicarFormatoExcel(hoja, [25, 22]);
+}
+
+// =====================================================
+// 6. PREPARAR TODAS LAS EVIDENCIAS
+// =====================================================
+
+function obtenerEvidencias(registros) {
+    const evidencias = [];
+
+    registros.forEach(registro => {
+        const numero = registro.numero || registro.contenedor || "Sin número";
+
+        const fotografias = Array.isArray(registro.fotografias)
+            ? registro.fotografias
+            : Array.isArray(registro.fotos)
+                ? registro.fotos
+                : [];
+
+        fotografias.forEach((foto, indice) => {
+            evidencias.push({
+                numero,
+                tipo: `Foto del contenedor ${indice + 1}`,
+                nombre: foto.nombre || `Fotografía ${indice + 1}`,
+                url: foto.data || foto.url || ""
+            });
+        });
+
+        const sello = registro.fotografiaSello || registro.fotoSello;
+
+        if (sello) {
+            evidencias.push({
+                numero,
+                tipo: "Foto del sello",
+                nombre: sello.nombre || "Fotografía del sello",
+                url: sello.data || sello.url || ""
+            });
+        }
+
+        if (fotografias.length === 0 && !sello) {
+            evidencias.push({
+                numero,
+                tipo: "Sin fotografías",
+                nombre: "Sin evidencias registradas",
+                url: ""
+            });
         }
     });
+
+    return evidencias;
 }
 
 // =====================================================
-// 9. ACTUALIZAR REPORTES
+// 7. RECUPERAR Y OPTIMIZAR IMÁGENES
 // =====================================================
 
-function actualizarReportes() {
-    const registros = obtenerRegistrosActuales();
+async function prepararImagenExcel(url) {
+    let response;
+
+    if (url.startsWith("data:image/")) {
+        response = await fetch(url);
+    } else {
+        const proxy = `/api/fotografias/proxy?url=${encodeURIComponent(url)}`;
+        response = await fetch(proxy);
+    }
+
+    if (!response.ok) {
+        throw new Error("No se pudo descargar la fotografía.");
+    }
+
+    const blob = await response.blob();
+    const bitmap = await createImageBitmap(blob);
+
+    // Reducir tamaño para evitar que el Excel sea excesivamente pesado.
+    const maxDimension = 1000;
+
+    const escala = Math.min(
+        1,
+        maxDimension / Math.max(bitmap.width, bitmap.height)
+    );
+
+    const canvas = document.createElement("canvas");
+
+    canvas.width = Math.max(1, Math.round(bitmap.width * escala));
+    canvas.height = Math.max(1, Math.round(bitmap.height * escala));
+
+    const contexto = canvas.getContext("2d");
+
+    if (!contexto) {
+        bitmap.close();
+        throw new Error("No fue posible procesar la fotografía.");
+    }
+
+    contexto.drawImage(
+        bitmap,
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    );
+
+    bitmap.close();
+
+    return canvas.toDataURL("image/jpeg", 0.72);
+}
+
+// =====================================================
+// 8. CREAR HOJA DE EVIDENCIAS FOTOGRÁFICAS
+// =====================================================
+
+async function crearHojaEvidencias(libro, registros) {
+    const hoja = libro.addWorksheet("Evidencias fotográficas");
+
+    hoja.columns = [
+        { header: "NUMERO DE CONTENEDOR", key: "numero", width: 25 },
+        { header: "TIPO DE EVIDENCIA", key: "tipo", width: 28 },
+        { header: "NOMBRE DEL ARCHIVO", key: "nombre", width: 32 },
+        { header: "FOTOGRAFÍA", key: "imagen", width: 25 }
+    ];
+
+    const encabezado = hoja.getRow(1);
+
+    encabezado.height = 30;
+
+    encabezado.eachCell(celda => {
+        celda.font = {
+            bold: true,
+            color: { argb: "FFFFFFFF" },
+            size: 11
+        };
+
+        celda.fill = {
+            type: "pattern",
+            pattern: "solid",
+            fgColor: { argb: "FF2563EB" }
+        };
+
+        celda.alignment = {
+            horizontal: "center",
+            vertical: "middle",
+            wrapText: true
+        };
+    });
+
+    const evidencias = obtenerEvidencias(registros);
+
+    // Primero crear las filas para mantener el orden de los registros.
+    evidencias.forEach(evidencia => {
+        const fila = hoja.addRow({
+            numero: evidencia.numero,
+            tipo: evidencia.tipo,
+            nombre: evidencia.nombre,
+            imagen: evidencia.url ? "" : "Sin imagen"
+        });
+
+        fila.height = 75;
+
+        fila.eachCell(celda => {
+            celda.alignment = {
+                vertical: "middle",
+                wrapText: true
+            };
+
+            celda.border = {
+                bottom: {
+                    style: "thin",
+                    color: { argb: "FFE2E8F0" }
+                }
+            };
+
+            celda.fill = {
+                type: "pattern",
+                pattern: "solid",
+                fgColor: {
+                    argb: fila.number % 2 === 0
+                        ? "FFEFF6FF"
+                        : "FFFFFFFF"
+                }
+            };
+        });
+    });
+
+    // Recuperar fotografías en grupos para controlar el consumo de memoria.
+    const evidenciasConImagen = evidencias
+        .map((evidencia, indice) => ({
+            ...evidencia,
+            fila: indice + 2
+        }))
+        .filter(evidencia => evidencia.url);
+
+    const tamanoLote = 6;
+
+    for (let inicio = 0; inicio < evidenciasConImagen.length; inicio += tamanoLote) {
+        const lote = evidenciasConImagen.slice(
+            inicio,
+            inicio + tamanoLote
+        );
+
+        const imagenes = await Promise.all(
+            lote.map(async evidencia => {
+                try {
+                    return {
+                        evidencia,
+                        imagen: await prepararImagenExcel(evidencia.url)
+                    };
+                } catch (error) {
+                    throw new Error(
+                        `Contenedor ${evidencia.numero}, archivo ${evidencia.nombre}: ${error.message}`
+                    );
+                }
+            })
+        );
+
+        imagenes.forEach(({ evidencia, imagen }) => {
+            const imagenId = libro.addImage({
+                base64: imagen,
+                extension: "jpeg"
+            });
+
+            hoja.addImage(imagenId, {
+                tl: {
+                    col: 3,
+                    row: evidencia.fila - 1
+                },
+                ext: {
+                    width: 150,
+                    height: 90
+                }
+            });
+        });
+    }
+
+    hoja.views = [{ state: "frozen", ySplit: 1 }];
+    hoja.autoFilter = {
+        from: "A1",
+        to: `D${hoja.rowCount}`
+    };
+}
+
+// =====================================================
+// 9. DESCARGAR LIBRO EXCEL COMPLETO
+// =====================================================
+
+async function descargarLibroExcel(nombreArchivo, registros) {
+    if (typeof ExcelJS === "undefined") {
+        throw new Error("No se pudo cargar la biblioteca ExcelJS.");
+    }
+
+    const libro = new ExcelJS.Workbook();
+
+    libro.creator = "Inventario Digitalizado";
+    libro.subject = "Reporte de inventario y evidencias fotográficas";
+    libro.title = "Reporte de inventario";
+    libro.created = new Date();
+
     const estadisticas = calcularEstadisticas(registros);
 
-    const total = document.querySelector("#reportTotal");
-    const fotos = document.querySelector("#reportFotos");
+    // Hoja 1: Resumen
+    crearHojaResumen(
+        libro.addWorksheet("Resumen"),
+        estadisticas
+    );
 
-    if (total) total.textContent = estadisticas.total;
-    if (fotos) fotos.textContent = estadisticas.totalFotos;
+    // Hoja 2: Inventario
+    crearHojaInventario(
+        libro.addWorksheet("Inventario"),
+        registros
+    );
 
-    crearGraficosReportes();
-    cargarCortesExportables();
+    // Hoja 3: Estadísticas
+    crearHojaEstadisticas(
+        libro.addWorksheet("Estadisticas"),
+        estadisticas
+    );
+
+    // Hoja 4: Por patio
+    crearHojaPatios(
+        libro.addWorksheet("Por patio"),
+        estadisticas
+    );
+
+    // Hoja 5: Todas las evidencias fotográficas
+    await crearHojaEvidencias(libro, registros);
+
+    const contenido = await libro.xlsx.writeBuffer();
+
+    const blob = new Blob(
+        [contenido],
+        {
+            type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        }
+    );
+
+    const url = URL.createObjectURL(blob);
+    const enlace = document.createElement("a");
+
+    enlace.href = url;
+    enlace.download = nombreArchivo;
+
+    document.body.appendChild(enlace);
+    enlace.click();
+    enlace.remove();
+
+    URL.revokeObjectURL(url);
 }
 
-function cargarCortesExportables() {
+// =====================================================
+// 10. EXPORTAR INVENTARIO ACTUAL
+// =====================================================
+
+async function exportarInventarioActual() {
+    const boton = document.querySelector("#exportCurrentInventory");
+
+    try {
+        if (boton) {
+            boton.disabled = true;
+            boton.textContent = "Preparando Excel...";
+        }
+
+        const registros = await obtenerRegistrosActuales();
+
+        if (registros.length === 0) {
+            alert("No hay registros para exportar.");
+            return;
+        }
+
+        const fecha = new Date().toISOString().slice(0, 10);
+
+        await descargarLibroExcel(
+            `inventario_actual_${fecha}.xlsx`,
+            registros
+        );
+
+    } catch (error) {
+        console.error("Error al exportar inventario:", error);
+
+        alert(
+            "No fue posible completar la exportación.\n\n" +
+            error.message
+        );
+
+    } finally {
+        if (boton) {
+            boton.disabled = false;
+            boton.textContent = "Descargar Excel";
+        }
+    }
+}
+
+// =====================================================
+// 11. EXPORTAR CORTE HISTÓRICO
+// =====================================================
+
+async function exportarCorteHistorico(idCorte) {
+    const boton = document.querySelector("#exportHistoryButton");
+
+    try {
+        if (boton) {
+            boton.disabled = true;
+            boton.textContent = "Preparando Excel...";
+        }
+
+        const cortes = await obtenerCortesHistoricos();
+
+        const corte = cortes.find(
+            item => String(item.id) === String(idCorte)
+        );
+
+        if (!corte) {
+            alert("No se encontró el corte histórico seleccionado.");
+            return;
+        }
+
+        const registros = Array.isArray(corte.registros)
+            ? corte.registros
+            : [];
+
+        const fecha = String(corte.fecha || "sin_fecha")
+            .replace(/[^\w-]/g, "_");
+
+        await descargarLibroExcel(
+            `inventario_historico_${fecha}.xlsx`,
+            registros
+        );
+
+    } catch (error) {
+        console.error("Error al exportar corte histórico:", error);
+
+        alert(
+            "No fue posible completar la exportación.\n\n" +
+            error.message
+        );
+
+    } finally {
+        if (boton) {
+            boton.disabled = !document.querySelector(
+                "#exportHistorySelect"
+            )?.value;
+
+            boton.textContent = "Descargar Excel";
+        }
+    }
+}
+// =====================================================
+// 12. CARGAR CORTES EN EL SELECTOR
+// =====================================================
+
+async function cargarSelectorCortes() {
     const selector = document.querySelector("#exportHistorySelect");
     const boton = document.querySelector("#exportHistoryButton");
 
     if (!selector || !boton) return;
 
-    const valorAnterior = selector.value;
-    const cortes = leerDatosExportacion(EXPORTAR_CORTES_KEY);
-
     selector.innerHTML = `
-        <option value="">Selecciona un corte histórico</option>
+        <option value="">Cargando cortes históricos...</option>
     `;
 
-    cortes.forEach(corte => {
-        const opcion = document.createElement("option");
+    boton.disabled = true;
 
-        opcion.value = corte.id;
-        opcion.textContent = corte.fecha || "Corte sin fecha";
+    try {
+        cortesExportables = await obtenerCortesHistoricos();
 
-        selector.appendChild(opcion);
-    });
+        selector.innerHTML = "";
 
-    if (cortes.some(corte => String(corte.id) === valorAnterior)) {
-        selector.value = valorAnterior;
+        if (cortesExportables.length === 0) {
+            selector.innerHTML = `
+                <option value="">No hay cortes históricos disponibles</option>
+            `;
+            return;
+        }
+
+        selector.innerHTML = `
+            <option value="">Selecciona un corte histórico</option>
+        `;
+
+        cortesExportables.forEach((corte, indice) => {
+            const opcion = document.createElement("option");
+
+            opcion.value = corte.id;
+
+            const fecha = corte.fecha ||
+                corte.fecha_hora ||
+                corte.fechaHora ||
+                `Corte ${indice + 1}`;
+
+            opcion.textContent = `${fecha} — ${
+                Array.isArray(corte.registros)
+                    ? corte.registros.length
+                    : 0
+            } contenedores`;
+
+            selector.appendChild(opcion);
+        });
+
+    } catch (error) {
+        console.error("Error al cargar cortes:", error);
+
+        selector.innerHTML = `
+            <option value="">Error al consultar los cortes</option>
+        `;
     }
 
     boton.disabled = !selector.value;
 }
 
 // =====================================================
-// 10. INICIALIZACIÓN
+// 13. ACTUALIZAR ESTADÍSTICAS DE REPORTES
 // =====================================================
 
-function iniciarExportacion() {
-    prepararInterfazExportacion();
-    actualizarReportes();
+function actualizarResumenReportes() {
+    const estadisticas = calcularEstadisticas(registrosActuales);
 
-    window.addEventListener("storage", event => {
-        if (
-            event.key === EXPORTAR_INVENTARIO_KEY ||
-            event.key === EXPORTAR_CORTES_KEY
-        ) {
-            actualizarReportes();
-        }
+    const total = document.querySelector("#reportTotal");
+    const totalFotos = document.querySelector("#reportTotalFotos");
+
+    if (total) {
+        total.textContent = estadisticas.total;
+    }
+
+    if (totalFotos) {
+        totalFotos.textContent = estadisticas.totalFotos;
+    }
+}
+
+// =====================================================
+// 14. INICIALIZAR EXPORTACIONES
+// =====================================================
+
+function inicializarExportaciones() {
+    const botonInventario = document.querySelector(
+        "#exportCurrentInventory"
+    );
+
+    const selectorHistorico = document.querySelector(
+        "#exportHistorySelect"
+    );
+
+    const botonHistorico = document.querySelector(
+        "#exportHistoryButton"
+    );
+
+    if (botonInventario) {
+        botonInventario.addEventListener(
+            "click",
+            exportarInventarioActual
+        );
+    }
+
+    if (selectorHistorico && botonHistorico) {
+        selectorHistorico.addEventListener("change", () => {
+            botonHistorico.disabled = !selectorHistorico.value;
+        });
+
+        botonHistorico.addEventListener("click", () => {
+            const idCorte = selectorHistorico.value;
+
+            if (!idCorte) {
+                alert("Selecciona un corte histórico.");
+                return;
+            }
+
+            exportarCorteHistorico(idCorte);
+        });
+    }
+
+    // Cargar datos del servidor.
+    Promise.all([
+        obtenerRegistrosActuales(),
+        cargarSelectorCortes()
+    ])
+        .then(([registros]) => {
+            registrosActuales = Array.isArray(registros)
+                ? registros
+                : [];
+
+            actualizarResumenReportes();
+        })
+        .catch(error => {
+            console.error(
+                "No fue posible cargar los datos de reportes:",
+                error
+            );
+        });
+
+    // Crear gráficos cuando se abra la sección Reportes.
+    document.querySelectorAll('[data-view="reportes"]').forEach(boton => {
+        boton.addEventListener("click", () => {
+            setTimeout(() => {
+                crearGraficosReportes();
+            }, 150);
+        });
     });
 }
 
+// =====================================================
+// 15. INICIO
+// =====================================================
+
 if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", iniciarExportacion);
+    document.addEventListener(
+        "DOMContentLoaded",
+        inicializarExportaciones
+    );
 } else {
-    iniciarExportacion();
+    inicializarExportaciones();
 }

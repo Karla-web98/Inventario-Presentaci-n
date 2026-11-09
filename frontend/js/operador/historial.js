@@ -88,8 +88,8 @@ function crearTabla(registros) {
     `;
 }
 
-export function renderizarHistorial() {
-    const registros = listarContenedores();
+export async function renderizarHistorial() {
+    const registros = await listarContenedores();
     const busqueda = $("#historySearch").value.trim().toLowerCase();
     const estado = $("#historyStatus").value;
 
@@ -109,8 +109,8 @@ export function renderizarHistorial() {
     $("#historyRecords").innerHTML = crearTabla(filtrados);
 }
 
-export function renderizarRecientes() {
-    const registros = listarContenedores().slice(0, 5);
+export async function renderizarRecientes() {
+    const registros = (await listarContenedores()).slice(0, 5);
     const contenedor = $("#recentRecords");
 
     if (registros.length === 0) {
@@ -155,11 +155,14 @@ export function renderizarRecientes() {
 // DETALLE DEL CONTENEDOR
 // ----------------------------------
 
-export function mostrarDetalle(id) {
-    const registro = buscarContenedor(id);
+export async function mostrarDetalle(id) {
+    const registro = await buscarContenedor(id);
     const contenedor = $("#recordDetail");
 
-    if (!registro) return;
+    if (!registro) {
+        window.alert("No se encontró el contenedor.");
+        return;
+    }
 
     contenedor.classList.remove("hidden");
 
@@ -183,13 +186,12 @@ export function mostrarDetalle(id) {
         </div>
     `).join("");
 
-    // Fotografías generales.
     const fotografias = registro.fotografias || [];
 
     const fotos = fotografias.map((foto, indice) => `
         <div class="detail-photo-item">
             <img
-                src="${foto.data}"
+                src="${escaparHTML(foto.data)}"
                 alt="Evidencia ${indice + 1} de ${escaparHTML(registro.numero)}"
             >
             <small>
@@ -198,12 +200,11 @@ export function mostrarDetalle(id) {
         </div>
     `).join("");
 
-    // Fotografía del sello.
     const fotoSello = registro.fotografiaSello
         ? `
             <div class="detail-photo-item">
                 <img
-                    src="${registro.fotografiaSello.data}"
+                    src="${escaparHTML(registro.fotografiaSello.data)}"
                     alt="Fotografía del sello de ${escaparHTML(registro.numero)}"
                 >
                 <small>
@@ -248,11 +249,11 @@ export function mostrarDetalle(id) {
 // ELIMINAR REGISTRO
 // ----------------------------------
 
-function eliminarRegistroOperador(id) {
-    const registro = buscarContenedor(id);
+async function eliminarRegistroOperador(id) {
+    const registro = await buscarContenedor(id);
 
     if (!registro) {
-        alert("No se encontró el contenedor.");
+        window.alert("No se encontró el contenedor.");
         return;
     }
 
@@ -263,10 +264,10 @@ function eliminarRegistroOperador(id) {
 
     if (!confirmar) return;
 
-    eliminarContenedor(id);
+    await eliminarContenedor(id);
 
-    renderizarHistorial();
-    renderizarRecientes();
+    await renderizarHistorial();
+    await renderizarRecientes();
 
     const detalle = $("#recordDetail");
 
@@ -275,13 +276,7 @@ function eliminarRegistroOperador(id) {
         detalle.innerHTML = "";
     }
 
-    window.dispatchEvent(
-        new StorageEvent("storage", {
-            key: "inventario_operador_registros"
-        })
-    );
-
-    alert(
+    window.alert(
         `La caja ${registro.numero} fue eliminada correctamente.`
     );
 }
@@ -291,21 +286,26 @@ function eliminarRegistroOperador(id) {
 // ----------------------------------
 
 export function inicializarHistorial() {
-    $("#historySearch").addEventListener(
-        "input",
-        renderizarHistorial
-    );
+    $("#historySearch").addEventListener("input", () => {
+        renderizarHistorial().catch(error => {
+            console.error("Error al buscar registros:", error);
+        });
+    });
 
-    $("#historyStatus").addEventListener(
-        "change",
-        renderizarHistorial
-    );
+    $("#historyStatus").addEventListener("change", () => {
+        renderizarHistorial().catch(error => {
+            console.error("Error al filtrar registros:", error);
+        });
+    });
 
     $("#historyRecords").addEventListener("click", event => {
         const botonDetalle = event.target.closest("[data-detail]");
 
         if (botonDetalle) {
-            mostrarDetalle(botonDetalle.dataset.detail);
+            mostrarDetalle(botonDetalle.dataset.detail).catch(error => {
+                console.error("Error al consultar contenedor:", error);
+                window.alert(error.message);
+            });
             return;
         }
 
@@ -314,7 +314,10 @@ export function inicializarHistorial() {
         if (botonEliminar) {
             eliminarRegistroOperador(
                 botonEliminar.dataset.delete
-            );
+            ).catch(error => {
+                console.error("Error al eliminar contenedor:", error);
+                window.alert(error.message);
+            });
         }
     });
 }

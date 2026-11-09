@@ -594,38 +594,112 @@
             </section>
 
             <!-- REPORTES -->
-            <section
-                id="view-reportes"
-                class="admin-view"
+<section
+    id="view-reportes"
+    class="admin-view"
+>
+    <div class="admin-page-heading">
+        <div>
+            <h2>Reportes</h2>
+            <p>
+                Consulta, analiza y exporta el inventario con sus
+                evidencias fotográficas.
+            </p>
+        </div>
+    </div>
+
+    <!-- EXPORTAR INVENTARIO ACTUAL -->
+    <div class="admin-table-card" style="padding: 24px; margin-bottom: 24px;">
+        <h3>Inventario actual</h3>
+        <p>
+            Descarga todos los contenedores registrados actualmente,
+            incluyendo sus fotografías generales y fotografías de sello.
+        </p>
+
+        <button
+            type="button"
+            id="exportCurrentInventory"
+            class="btn btn-primary"
+        >
+            Descargar Excel
+        </button>
+    </div>
+
+    <!-- EXPORTAR CORTES HISTÓRICOS -->
+    <div class="admin-table-card" style="padding: 24px; margin-bottom: 24px;">
+        <h3>Cortes históricos</h3>
+        <p>
+            Selecciona un corte para descargar la información y las
+            fotografías que tenía registradas en ese momento.
+        </p>
+
+        <div class="admin-filters">
+            <select id="exportHistorySelect">
+                <option value="">Cargando cortes históricos...</option>
+            </select>
+
+            <button
+                type="button"
+                id="exportHistoryButton"
+                class="btn btn-primary"
+                disabled
             >
+                Descargar Excel
+            </button>
+        </div>
+    </div>
 
-                <div class="admin-page-heading">
-                    <div>
-                        <h2>Reportes</h2>
+    <!-- GRÁFICOS -->
+    <div class="admin-page-heading">
+        <div>
+            <h2>Estadísticas del inventario actual</h2>
+            <p>
+                Distribución de contenedores por estado, patio y fecha.
+            </p>
+        </div>
+    </div>
 
-                        <p>
-                            Consulta información resumida del inventario.
-                        </p>
-                    </div>
-                </div>
+    <div class="admin-stats-grid">
+        <article class="admin-stat-card">
+            <div class="admin-stat-icon blue">▤</div>
+            <div>
+                <span>Total de cajas</span>
+                <strong id="reportTotal">0</strong>
+            </div>
+        </article>
 
-                <div class="admin-placeholder">
+        <article class="admin-stat-card">
+            <div class="admin-stat-icon purple">▧</div>
+            <div>
+                <span>Total de fotografías</span>
+                <strong id="reportTotalFotos">0</strong>
+            </div>
+        </article>
+    </div>
 
-                    <div class="admin-placeholder-icon">
-                        ▥
-                    </div>
+    <div class="admin-actions-grid" style="margin-top: 24px;">
+        <article class="admin-table-card" style="padding: 20px;">
+            <h3>Contenedores por estado</h3>
+            <div style="position: relative; height: 300px;">
+                <canvas id="chartEstados"></canvas>
+            </div>
+        </article>
 
-                    <h3>Reportes</h3>
+        <article class="admin-table-card" style="padding: 20px;">
+            <h3>Contenedores por patio</h3>
+            <div style="position: relative; height: 300px;">
+                <canvas id="chartPatios"></canvas>
+            </div>
+        </article>
+    </div>
 
-                    <p>
-                        Aquí estarán disponibles los reportes
-                        del inventario y sus opciones de exportación.
-                    </p>
-
-                </div>
-
-            </section>
-
+    <div class="admin-table-card" style="padding: 20px; margin-top: 24px;">
+        <h3>Registros por fecha</h3>
+        <div style="position: relative; height: 300px;">
+            <canvas id="chartFechas"></canvas>
+        </div>
+    </div>
+</section>
             <!-- DETALLE DEL CONTENEDOR -->
             <section
                 id="view-detalle"
@@ -662,7 +736,7 @@
 
     <!-- JAVASCRIPT -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 
     <script type="module" src="/static/js/administrador/dashboard.js"></script>
     <script type="module" src="/static/js/administrador/inventario.js"></script>

@@ -1,49 +1,15 @@
+
 "use strict";
 
-// =========================================================
-// HISTÓRICO DEL ADMINISTRADOR
-// Cada corte conserva una copia completa del inventario.
-// =========================================================
+import { listarContenedores } from "../api/contenedores.js";
 
-const HISTORICO_REGISTROS_KEY = "inventario_operador_registros";
-const HISTORICO_CORTES_KEY = "inventario_admin_cortes";
+const API_CORTES = "/api/cortes";
+
+let cortesHistoricos = [];
 
 // =========================================================
 // UTILIDADES
 // =========================================================
-
-function obtenerRegistrosHistorico() {
-    try {
-        const datos = JSON.parse(
-            localStorage.getItem(HISTORICO_REGISTROS_KEY) || "[]"
-        );
-
-        return Array.isArray(datos) ? datos : [];
-    } catch (error) {
-        console.error("Error al leer el inventario:", error);
-        return [];
-    }
-}
-
-function obtenerCortesHistorico() {
-    try {
-        const datos = JSON.parse(
-            localStorage.getItem(HISTORICO_CORTES_KEY) || "[]"
-        );
-
-        return Array.isArray(datos) ? datos : [];
-    } catch (error) {
-        console.error("Error al leer los cortes históricos:", error);
-        return [];
-    }
-}
-
-function guardarCortesHistorico(cortes) {
-    localStorage.setItem(
-        HISTORICO_CORTES_KEY,
-        JSON.stringify(cortes)
-    );
-}
 
 function escaparHistorico(valor) {
     return String(valor ?? "")
@@ -91,12 +57,11 @@ function obtenerFechaLocalHistorico() {
 }
 
 function formatearFechaHistorico(valor) {
-    if (!valor) {
-        return "—";
-    }
+    if (!valor) return "—";
 
-    // Evita desfases de día al interpretar fechas YYYY-MM-DD.
-    const coincidencia = String(valor).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    const coincidencia = String(valor).match(
+        /^(\d{4})-(\d{2})-(\d{2})$/
+    );
 
     if (coincidencia) {
         return `${coincidencia[3]}/${coincidencia[2]}/${coincidencia[1]}`;
@@ -113,14 +78,6 @@ function formatearFechaHistorico(valor) {
         month: "2-digit",
         year: "numeric"
     });
-}
-
-function formatearHoraHistorico(valor) {
-    if (!valor) {
-        return "—";
-    }
-
-    return escaparHistorico(valor);
 }
 
 // =========================================================
@@ -162,16 +119,21 @@ function obtenerPatioHistorico(registro) {
     ]) || "—";
 }
 
-function obtenerFotosHistorico(registro) {
-    // El módulo Operador guarda las fotos en "fotografias".
-    // Se contempla "fotos" para registros de versiones anteriores.
-    const fotos = registro.fotografias ?? registro.fotos ?? [];
+function obtenerSpotHistorico(registro) {
+    return obtenerCampoHistorico(registro, [
+        "spot",
+        "numeroSpot",
+        "numero_spot"
+    ]) || "—";
+}
 
+function obtenerFotosHistorico(registro) {
+    const fotos = registro.fotografias ?? registro.fotos ?? [];
     return Array.isArray(fotos) ? fotos : [];
 }
 
 // =========================================================
-// RESUMEN DEL CORTE
+// RESUMEN
 // =========================================================
 
 function calcularResumenHistorico(registros) {
@@ -184,15 +146,20 @@ function calcularResumenHistorico(registros) {
             obtenerEstadoHistorico(registro)
         );
 
-        if (estado === "disponible") {
-            disponibles++;
-        }
+        if (estado === "disponible") disponibles++;
 
-        if (estado === "observado" || estado === "observada") {
+        if (
+            estado === "observado" ||
+            estado === "observada"
+        ) {
             observadas++;
         }
 
         fotografias += obtenerFotosHistorico(registro).length;
+
+        if (registro.fotografiaSello) {
+            fotografias++;
+        }
     });
 
     return {
@@ -204,25 +171,64 @@ function calcularResumenHistorico(registros) {
 }
 
 // =========================================================
+// API DE CORTES
+// =========================================================
+
+async function consultarCortesHistoricos() {
+    const respuesta = await fetch(API_CORTES);
+
+    const resultado = await respuesta.json();
+
+    if (!respuesta.ok || resultado.ok === false) {
+        throw new Error(
+            resultado.error || "No fue posible consultar los cortes."
+        );
+    }
+
+    cortesHistoricos = Array.isArray(resultado.cortes)
+        ? resultado.cortes
+        : [];
+
+    return cortesHistoricos;
+}
+
+async function guardarCorteServidor(corte) {
+    const respuesta = await fetch(API_CORTES, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify(corte)
+    });
+
+    const resultado = await respuesta.json();
+
+    if (!respuesta.ok || resultado.ok === false) {
+        throw new Error(
+            resultado.error || "No fue posible guardar el corte."
+        );
+    }
+
+    return resultado.corte;
+}
+
+// =========================================================
 // CREAR CORTE DIARIO
 // =========================================================
 
-function crearCorteDiario() {
+async function crearCorteDiario() {
     const fechaHoy = obtenerFechaLocalHistorico();
-    const cortes = obtenerCortesHistorico();
 
-    // Solo se genera un corte automático por día.
-    const corteExistente = cortes.find(
+    const existente = cortesHistoricos.find(
         corte => corte.fecha === fechaHoy
     );
 
-    if (corteExistente) {
-        return corteExistente;
-    }
+    if (existente) return existente;
 
-    const registros = obtenerRegistrosHistorico();
+    const registros = await listarContenedores();
 
-    // Se realiza una copia independiente de los registros y fotos.
+    // Copia independiente para conservar el estado y las URL
+    // de las fotografías en el momento de generar el corte.
     const copiaRegistros = JSON.parse(
         JSON.stringify(registros)
     );
@@ -235,24 +241,26 @@ function crearCorteDiario() {
         registros: copiaRegistros
     };
 
-    cortes.unshift(nuevoCorte);
-    guardarCortesHistorico(cortes);
+    const corteGuardado = await guardarCorteServidor(nuevoCorte);
 
-    console.log("Corte histórico diario creado:", nuevoCorte);
+    await consultarCortesHistoricos();
 
-    return nuevoCorte;
+    console.log(
+        "Corte histórico diario sincronizado:",
+        corteGuardado
+    );
+
+    return corteGuardado;
 }
 
 // =========================================================
-// PREPARAR INTERFAZ DEL HISTÓRICO
+// PREPARAR INTERFAZ
 // =========================================================
 
 function prepararInterfazHistorico() {
     const vista = document.querySelector("#view-historico");
 
-    if (!vista) {
-        return;
-    }
+    if (!vista) return;
 
     const encabezado = vista.querySelector(".admin-page-heading");
 
@@ -269,9 +277,7 @@ function prepararInterfazHistorico() {
 
     const tabla = document.querySelector("#historyTable");
 
-    if (!tabla) {
-        return;
-    }
+    if (!tabla) return;
 
     const tarjeta = tabla.closest(".admin-table-card");
 
@@ -284,8 +290,9 @@ function prepararInterfazHistorico() {
         tarjeta.insertAdjacentElement("afterend", detalle);
     }
 
-    // Cambiar los encabezados originales, que correspondían a movimientos.
-    const encabezados = tabla.closest("table")?.querySelectorAll("thead th");
+    const encabezados = tabla
+        .closest("table")
+        ?.querySelectorAll("thead th");
 
     if (encabezados && encabezados.length >= 5) {
         const titulos = [
@@ -309,13 +316,9 @@ function prepararInterfazHistorico() {
 function mostrarCortesHistoricos() {
     const tabla = document.querySelector("#historyTable");
 
-    if (!tabla) {
-        return;
-    }
+    if (!tabla) return;
 
-    const cortes = obtenerCortesHistorico();
-
-    if (!cortes.length) {
+    if (!cortesHistoricos.length) {
         tabla.innerHTML = `
             <tr>
                 <td colspan="5" class="admin-empty">
@@ -323,11 +326,10 @@ function mostrarCortesHistoricos() {
                 </td>
             </tr>
         `;
-
         return;
     }
 
-    tabla.innerHTML = cortes.map(corte => {
+    tabla.innerHTML = cortesHistoricos.map(corte => {
         const resumen = corte.resumen || {};
 
         return `
@@ -337,9 +339,7 @@ function mostrarCortesHistoricos() {
                 </td>
 
                 <td>${Number(resumen.total) || 0}</td>
-
                 <td>${Number(resumen.disponibles) || 0}</td>
-
                 <td>${Number(resumen.observadas) || 0}</td>
 
                 <td>
@@ -361,13 +361,11 @@ function mostrarCortesHistoricos() {
 }
 
 // =========================================================
-// MOSTRAR DETALLE DE UN CORTE
+// DETALLE DEL CORTE
 // =========================================================
 
 function mostrarDetalleCorte(identificador) {
-    const cortes = obtenerCortesHistorico();
-
-    const corte = cortes.find(
+    const corte = cortesHistoricos.find(
         item => String(item.id) === String(identificador)
     );
 
@@ -378,9 +376,7 @@ function mostrarDetalleCorte(identificador) {
 
     const contenedor = document.querySelector("#historyDetail");
 
-    if (!contenedor) {
-        return;
-    }
+    if (!contenedor) return;
 
     const registros = Array.isArray(corte.registros)
         ? corte.registros
@@ -440,6 +436,7 @@ function mostrarDetalleCorte(identificador) {
                         <th>STATUS</th>
                         <th>UBICACIÓN</th>
                         <th>PATIO</th>
+                        <th>SPOT</th>
                         <th>FOTOS</th>
                     </tr>
                 </thead>
@@ -449,36 +446,18 @@ function mostrarDetalleCorte(identificador) {
                         registros.length
                             ? registros.map(registro => `
                                 <tr>
-                                    <td>
-                                        <strong>
-                                            ${escaparHistorico(obtenerNumeroHistorico(registro))}
-                                        </strong>
-                                    </td>
-
-                                    <td>
-                                        ${escaparHistorico(obtenerCarrierHistorico(registro))}
-                                    </td>
-
-                                    <td>
-                                        ${escaparHistorico(obtenerEstadoHistorico(registro))}
-                                    </td>
-
-                                    <td>
-                                        ${escaparHistorico(obtenerUbicacionHistorico(registro))}
-                                    </td>
-
-                                    <td>
-                                        ${escaparHistorico(obtenerPatioHistorico(registro))}
-                                    </td>
-
-                                    <td>
-                                        ${obtenerFotosHistorico(registro).length}
-                                    </td>
+                                    <td><strong>${escaparHistorico(obtenerNumeroHistorico(registro))}</strong></td>
+                                    <td>${escaparHistorico(obtenerCarrierHistorico(registro))}</td>
+                                    <td>${escaparHistorico(obtenerEstadoHistorico(registro))}</td>
+                                    <td>${escaparHistorico(obtenerUbicacionHistorico(registro))}</td>
+                                    <td>${escaparHistorico(obtenerPatioHistorico(registro))}</td>
+                                    <td>${escaparHistorico(obtenerSpotHistorico(registro))}</td>
+                                    <td>${obtenerFotosHistorico(registro).length + (registro.fotografiaSello ? 1 : 0)}</td>
                                 </tr>
                             `).join("")
                             : `
                                 <tr>
-                                    <td colspan="6" class="admin-empty">
+                                    <td colspan="7" class="admin-empty">
                                         El inventario estaba vacío en este corte.
                                     </td>
                                 </tr>
@@ -506,9 +485,7 @@ function configurarEventosHistorico() {
     tabla?.addEventListener("click", evento => {
         const boton = evento.target.closest("[data-history-detail]");
 
-        if (!boton) {
-            return;
-        }
+        if (!boton) return;
 
         mostrarDetalleCorte(boton.dataset.historyDetail);
     });
@@ -520,10 +497,12 @@ function configurarEventosHistorico() {
         }
     });
 
-    // Actualizar la tabla si otra pestaña crea o modifica cortes.
-    window.addEventListener("storage", evento => {
-        if (evento.key === HISTORICO_CORTES_KEY) {
+    window.addEventListener("inventario:actualizado", async () => {
+        try {
+            await consultarCortesHistoricos();
             mostrarCortesHistoricos();
+        } catch (error) {
+            console.error("Error al actualizar el histórico:", error);
         }
     });
 }
@@ -532,20 +511,42 @@ function configurarEventosHistorico() {
 // INICIALIZACIÓN
 // =========================================================
 
-function iniciarHistoricoAdministrador() {
+async function iniciarHistoricoAdministrador() {
     prepararInterfazHistorico();
-
-    // Crear el corte del día si todavía no existe.
-    crearCorteDiario();
-
-    mostrarCortesHistoricos();
-
     configurarEventosHistorico();
 
-    console.log("Histórico del administrador iniciado correctamente.");
+    const tabla = document.querySelector("#historyTable");
+
+    try {
+        await consultarCortesHistoricos();
+        await crearCorteDiario();
+        mostrarCortesHistoricos();
+
+        console.log(
+            "Histórico del administrador sincronizado con PostgreSQL."
+        );
+
+    } catch (error) {
+        console.error("Error al iniciar el histórico:", error);
+
+        if (tabla) {
+            tabla.innerHTML = `
+                <tr>
+                    <td colspan="5" class="admin-empty">
+                        No fue posible cargar el histórico.
+                        ${escaparHistorico(error.message)}
+                    </td>
+                </tr>
+            `;
+        }
+    }
 }
 
-document.addEventListener(
-    "DOMContentLoaded",
-    iniciarHistoricoAdministrador
-);
+if (document.readyState === "loading") {
+    document.addEventListener(
+        "DOMContentLoaded",
+        iniciarHistoricoAdministrador
+    );
+} else {
+    iniciarHistoricoAdministrador();
+}

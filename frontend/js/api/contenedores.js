@@ -1,59 +1,55 @@
 "use strict";
+const API_URL = "/api/contenedores";
 
-import { obtenerRegistros, guardarRegistros } from "./api.js";
-
-function normalizarNumero(numero) {
-    return String(numero || "").trim().toUpperCase();
-}
-
-export function listarContenedores() {
-    return obtenerRegistros();
-}
-
-export function buscarContenedor(id) {
-    return obtenerRegistros().find(
-        registro => registro.id === id
-    ) || null;
-}
-
-export function registrarContenedor(datos) {
-    const registros = obtenerRegistros();
-    const numero = normalizarNumero(datos.numero);
-
-    if (!numero) {
-        throw new Error("El número del contenedor es obligatorio.");
+async function procesarRespuesta(response) {
+    let resultado;
+    try {
+        resultado = await response.json();
+    } catch {
+        throw new Error("El servidor devolvió una respuesta no válida.");
     }
 
-    const existe = registros.some(registro =>
-        normalizarNumero(registro.numero) === numero
-    );
-
-    if (existe) {
+    if (!response.ok || resultado.ok === false) {
         throw new Error(
-            "Ya existe un contenedor registrado con ese número."
+            resultado.error ||
+            resultado.mensaje ||
+            "Ocurrió un error al comunicarse con el servidor."
         );
     }
-
-    const nuevoRegistro = {
-        ...datos,
-        numero,
-        id: typeof crypto !== "undefined" &&
-            typeof crypto.randomUUID === "function"
-                ? crypto.randomUUID()
-                : `registro-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-        fechaRegistro: new Date().toISOString()
-    };
-
-    registros.unshift(nuevoRegistro);
-    guardarRegistros(registros);
-
-    return nuevoRegistro;
+    return resultado;
 }
 
-export function eliminarContenedor(id) {
-    const registros = obtenerRegistros();
+export async function listarContenedores() {
+    const response = await fetch(API_URL);
+    const resultado = await procesarRespuesta(response);
 
-    guardarRegistros(
-        registros.filter(registro => registro.id !== id)
+    return resultado.registros || [];
+}
+
+export async function buscarContenedor(id) {
+    const registros = await listarContenedores();
+
+    return registros.find(registro => registro.id === id) || null;
+}
+
+export async function registrarContenedor(datos) {
+    const response = await fetch(API_URL, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify(datos)
+    });
+    const resultado = await procesarRespuesta(response);
+    return resultado.registro;
+}
+
+export async function eliminarContenedor(id) {
+    const response = await fetch(
+        `${API_URL}/${encodeURIComponent(id)}`,
+        {
+            method: "DELETE"
+        }
     );
+    return await procesarRespuesta(response);
 }

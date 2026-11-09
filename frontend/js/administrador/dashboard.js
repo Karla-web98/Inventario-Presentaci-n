@@ -1,36 +1,27 @@
+
 "use strict";
 
 // =========================================================
 // DASHBOARD DEL ADMINISTRADOR
 // =========================================================
 
-const STORAGE_KEY = "inventario_operador_registros";
+import { listarContenedores } from "../api/contenedores.js";
+
+// =========================================================
+// OBTENER REGISTROS DEL SERVIDOR
+// =========================================================
+
+async function obtenerRegistros() {
+    const registros = await listarContenedores();
+
+    return Array.isArray(registros) ? registros : [];
+}
 
 // =========================================================
 // UTILIDADES
 // =========================================================
 
-function obtenerRegistros() {
-    try {
-        const registros = JSON.parse(
-            localStorage.getItem(STORAGE_KEY) || "[]"
-        );
-
-        return Array.isArray(registros) ? registros : [];
-
-    } catch (error) {
-        console.error(
-            "No se pudieron leer los registros:",
-            error
-        );
-
-        return [];
-    }
-}
-
-
 function escaparHTML(valor) {
-
     return String(valor ?? "")
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
@@ -39,22 +30,24 @@ function escaparHTML(valor) {
         .replace(/'/g, "&#039;");
 }
 
+function normalizarTexto(valor) {
+    return String(valor ?? "")
+        .trim()
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+}
 
 // =========================================================
 // FECHA ACTUAL
 // =========================================================
 
 function mostrarFechaActual() {
-
     const elemento = document.querySelector("#currentDate");
 
-    if (!elemento) {
-        return;
-    }
+    if (!elemento) return;
 
-    const fecha = new Date();
-
-    elemento.textContent = fecha.toLocaleDateString(
+    elemento.textContent = new Date().toLocaleDateString(
         "es-MX",
         {
             day: "2-digit",
@@ -64,186 +57,117 @@ function mostrarFechaActual() {
     );
 }
 
-
 // =========================================================
 // ESTADÍSTICAS
 // =========================================================
 
 function actualizarEstadisticas(registros) {
-
     const total = registros.length;
 
-    // -----------------------------------------------------
-    // CONTAR POR STATUS
-    // -----------------------------------------------------
-
     const vacios = registros.filter(registro =>
-        normalizarTexto(
-            registro.status || registro.estado
-        ) === "vacio"
+        normalizarTexto(registro.status || registro.estado) === "vacio"
     ).length;
-
 
     const cargadosProd = registros.filter(registro =>
-        normalizarTexto(
-            registro.status || registro.estado
-        ) === "cargado prod"
+        normalizarTexto(registro.status || registro.estado) === "cargado prod"
     ).length;
-
 
     const equiposVacios = registros.filter(registro =>
-        normalizarTexto(
-            registro.status || registro.estado
-        ) === "equipo vacio"
+        normalizarTexto(registro.status || registro.estado) === "equipo vacio"
     ).length;
-
 
     const danados = registros.filter(registro =>
-        normalizarTexto(
-            registro.status || registro.estado
-        ) === "danado"
+        normalizarTexto(registro.status || registro.estado) === "danado"
     ).length;
 
+    const fotografias = registros.reduce((totalFotos, registro) => {
+        const fotos = Array.isArray(registro.fotografias)
+            ? registro.fotografias.length
+            : Array.isArray(registro.fotos)
+                ? registro.fotos.length
+                : 0;
 
-    // -----------------------------------------------------
-    // CONTAR FOTOGRAFÍAS
-    // -----------------------------------------------------
+        return totalFotos + fotos;
+    }, 0);
 
-    const fotografias = registros.reduce(
-        (totalFotos, registro) => {
+    const estadisticas = {
+        "#statTotal": total,
+        "#statVacios": vacios,
+        "#statCargadosProd": cargadosProd,
+        "#statEquiposVacios": equiposVacios,
+        "#statDanados": danados,
+        "#statFotos": fotografias
+    };
 
-            const fotos = Array.isArray(registro.fotografias)
-                ? registro.fotografias.length
-                : Array.isArray(registro.fotos)
-                    ? registro.fotos.length
-                    : 0;
+    Object.entries(estadisticas).forEach(([selector, valor]) => {
+        const elemento = document.querySelector(selector);
 
-            return totalFotos + fotos;
-        },
-        0
-    );
-
-
-    // -----------------------------------------------------
-    // ELEMENTOS DEL DASHBOARD
-    // -----------------------------------------------------
-
-    const elementoTotal =
-        document.querySelector("#statTotal");
-
-    const elementoVacios =
-        document.querySelector("#statVacios");
-
-    const elementoCargadosProd =
-        document.querySelector("#statCargadosProd");
-
-    const elementoEquiposVacios =
-        document.querySelector("#statEquiposVacios");
-
-    const elementoDanados =
-        document.querySelector("#statDanados");
-
-    const elementoFotos =
-        document.querySelector("#statFotos");
-
-
-    // -----------------------------------------------------
-    // ACTUALIZAR VALORES
-    // -----------------------------------------------------
-
-    if (elementoTotal) {
-        elementoTotal.textContent = total;
-    }
-
-    if (elementoVacios) {
-        elementoVacios.textContent = vacios;
-    }
-
-    if (elementoCargadosProd) {
-        elementoCargadosProd.textContent = cargadosProd;
-    }
-
-    if (elementoEquiposVacios) {
-        elementoEquiposVacios.textContent = equiposVacios;
-    }
-
-    if (elementoDanados) {
-        elementoDanados.textContent = danados;
-    }
-
-    if (elementoFotos) {
-        elementoFotos.textContent = fotografias;
-    }
+        if (elemento) {
+            elemento.textContent = valor;
+        }
+    });
 }
 
-
 // =========================================================
-// NORMALIZAR TEXTO
+// OBTENER DATOS DEL REGISTRO
 // =========================================================
 
-function normalizarTexto(valor) {
-
-    return String(valor ?? "")
-        .trim()
-        .toLowerCase()
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "");
+function obtenerNumero(registro) {
+    return registro.numero ||
+        registro.numeroCaja ||
+        registro.caja ||
+        registro.identificador ||
+        "—";
 }
 
+function obtenerCarrier(registro) {
+    return registro.carrier ||
+        registro.transportista ||
+        "—";
+}
 
-// =========================================================
-// FECHA DEL REGISTRO
-// =========================================================
+function obtenerEstado(registro) {
+    return registro.status ||
+        registro.estado ||
+        "—";
+}
+
+function obtenerUbicacion(registro) {
+    return registro.ubicacion || "—";
+}
+
+function obtenerPatio(registro) {
+    return registro.patio || "—";
+}
+
+function obtenerSpot(registro) {
+    return registro.spot ||
+        registro.numeroSpot ||
+        registro.numero_spot ||
+        "—";
+}
 
 function obtenerFechaRegistro(registro) {
-
-    if (registro.fechaRegistro) {
-        return registro.fechaRegistro;
-    }
-
-    if (registro.fecha_registro) {
-        return registro.fecha_registro;
-    }
-
-    if (registro.fecha) {
-        return registro.fecha;
-    }
-
-    if (registro.createdAt) {
-        return registro.createdAt;
-    }
-
-    return "";
+    return registro.fechaRegistro ||
+        registro.fecha_registro ||
+        registro.fecha ||
+        registro.createdAt ||
+        "";
 }
-
 
 function obtenerHoraRegistro(registro) {
-
-    if (registro.horaRegistro) {
-        return registro.horaRegistro;
-    }
-
-    if (registro.hora_registro) {
-        return registro.hora_registro;
-    }
-
-    if (registro.hora) {
-        return registro.hora;
-    }
-
-    return "";
+    return registro.horaRegistro ||
+        registro.hora_registro ||
+        registro.hora ||
+        "";
 }
-
 
 // =========================================================
 // FORMATEAR FECHA
 // =========================================================
 
 function formatearFecha(valor) {
-
-    if (!valor) {
-        return "—";
-    }
+    if (!valor) return "—";
 
     const fecha = new Date(valor);
 
@@ -251,78 +175,56 @@ function formatearFecha(valor) {
         return escaparHTML(valor);
     }
 
-    return fecha.toLocaleDateString(
-        "es-MX",
-        {
-            day: "2-digit",
-            month: "2-digit",
-            year: "numeric"
-        }
-    );
+    return fecha.toLocaleDateString("es-MX", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric"
+    });
 }
-
 
 // =========================================================
-// OBTENER DATOS DEL REGISTRO
+// ORDENAMIENTO
 // =========================================================
 
-function obtenerNumero(registro) {
+function obtenerFechaOrdenamiento(registro) {
+    const fecha = obtenerFechaRegistro(registro);
 
-    return (
-        registro.numero ||
-        registro.numeroCaja ||
-        registro.caja ||
-        registro.identificador ||
-        "—"
-    );
+    if (!fecha) return 0;
+
+    // Primero intenta interpretar la fecha directamente.
+    const fechaDirecta = new Date(fecha).getTime();
+
+    if (!Number.isNaN(fechaDirecta)) {
+        return fechaDirecta;
+    }
+
+    // Compatibilidad con fechas y horas separadas.
+    const hora = obtenerHoraRegistro(registro);
+    const fechaConHora = new Date(`${fecha} ${hora}`).getTime();
+
+    return Number.isNaN(fechaConHora) ? 0 : fechaConHora;
 }
 
+// =========================================================
+// CLASE DEL ESTADO
+// =========================================================
 
-function obtenerCarrier(registro) {
+function obtenerClaseEstado(estado) {
+    const valor = normalizarTexto(estado);
 
-    return (
-        registro.carrier ||
-        registro.transportista ||
-        "—"
-    );
-}
+    if (valor === "vacio" || valor === "equipo vacio") {
+        return "badge-success";
+    }
 
+    if (valor === "cargado prod") {
+        return "badge-warning";
+    }
 
-function obtenerEstado(registro) {
+    if (valor === "danado") {
+        return "badge-danger";
+    }
 
-    return (
-        registro.status ||
-        registro.estado ||
-        "—"
-    );
-}
-
-
-function obtenerUbicacion(registro) {
-
-    return (
-        registro.ubicacion ||
-        "—"
-    );
-}
-
-
-function obtenerPatio(registro) {
-
-    return (
-        registro.patio ||
-        "—"
-    );
-}
-
-function obtenerSpot(registro) {
-
-    return (
-        registro.spot ||
-        registro.numeroSpot ||
-        registro.numero_spot ||
-        "—"
-    );
+    return "";
 }
 
 // =========================================================
@@ -330,23 +232,14 @@ function obtenerSpot(registro) {
 // =========================================================
 
 function mostrarUltimosRegistros(registros) {
+    const tabla = document.querySelector("#dashboardRecentTable");
 
-    const tabla =
-        document.querySelector("#dashboardRecentTable");
-
-    if (!tabla) {
-        return;
-    }
-
+    if (!tabla) return;
 
     if (!registros.length) {
-
         tabla.innerHTML = `
             <tr>
-                <td
-                    colspan="7"
-                    class="admin-empty"
-                >
+                <td colspan="8" class="admin-empty">
                     No hay registros todavía.
                 </td>
             </tr>
@@ -355,58 +248,29 @@ function mostrarUltimosRegistros(registros) {
         return;
     }
 
-
-    // Ordenar del más reciente al más antiguo
     const ordenados = [...registros]
-        .sort((a, b) => {
-
-            const fechaA =
-                obtenerFechaOrdenamiento(a);
-
-            const fechaB =
-                obtenerFechaOrdenamiento(b);
-
-            return fechaB - fechaA;
-        })
+        .sort((a, b) =>
+            obtenerFechaOrdenamiento(b) -
+            obtenerFechaOrdenamiento(a)
+        )
         .slice(0, 5);
 
-
     tabla.innerHTML = ordenados.map(registro => {
-
-        const numero =
-            obtenerNumero(registro);
-
-        const carrier =
-            obtenerCarrier(registro);
-
-        const estado =
-            obtenerEstado(registro);
-
-        const ubicacion =
-            obtenerUbicacion(registro);
-
-        const spot =
-            obtenerSpot(registro);
-
-        const patio =
-            obtenerPatio(registro);
-
-        const fecha =
-            obtenerFechaRegistro(registro);
-
+        const numero = obtenerNumero(registro);
+        const carrier = obtenerCarrier(registro);
+        const estado = obtenerEstado(registro);
+        const ubicacion = obtenerUbicacion(registro);
+        const spot = obtenerSpot(registro);
+        const patio = obtenerPatio(registro);
+        const fecha = obtenerFechaRegistro(registro);
 
         return `
             <tr>
-
                 <td>
-                    <strong>
-                        ${escaparHTML(numero)}
-                    </strong>
+                    <strong>${escaparHTML(numero)}</strong>
                 </td>
 
-                <td>
-                    ${escaparHTML(carrier)}
-                </td>
+                <td>${escaparHTML(carrier)}</td>
 
                 <td>
                     <span class="badge ${obtenerClaseEstado(estado)}">
@@ -414,268 +278,151 @@ function mostrarUltimosRegistros(registros) {
                     </span>
                 </td>
 
-                <td>
-                    ${escaparHTML(ubicacion)}
-                </td>
+                <td>${escaparHTML(ubicacion)}</td>
 
-                <td>
-                    ${escaparHTML(spot)}
-                </td>
+                <td>${escaparHTML(spot)}</td>
 
-                <td>
-                    ${escaparHTML(patio)}
-                </td>
+                <td>${escaparHTML(patio)}</td>
 
-                <td>
-                    ${formatearFecha(fecha)}
-                </td>
+                <td>${formatearFecha(fecha)}</td>
 
+                <td></td>
             </tr>
         `;
-
     }).join("");
 }
-
-
-// =========================================================
-// ORDENAMIENTO
-// =========================================================
-
-function obtenerFechaOrdenamiento(registro) {
-
-    const fecha =
-        obtenerFechaRegistro(registro);
-
-    const hora =
-        obtenerHoraRegistro(registro);
-
-    if (!fecha && !hora) {
-        return 0;
-    }
-
-    const valor = `${fecha} ${hora}`;
-
-    const resultado =
-        new Date(valor).getTime();
-
-    if (Number.isNaN(resultado)) {
-        return 0;
-    }
-
-    return resultado;
-}
-
-
-// =========================================================
-// CLASE DEL ESTADO
-// =========================================================
-
-function obtenerClaseEstado(estado) {
-
-    const estadoNormalizado =
-        normalizarTexto(estado);
-
-
-    if (estadoNormalizado === "vacio") {
-        return "badge-success";
-    }
-
-
-    if (estadoNormalizado === "cargado prod") {
-        return "badge-warning";
-    }
-
-
-    if (estadoNormalizado === "equipo vacio") {
-        return "badge-success";
-    }
-
-
-    if (estadoNormalizado === "danado") {
-        return "badge-danger";
-    }
-
-
-    return "";
-}
-
 
 // =========================================================
 // NAVEGACIÓN
 // =========================================================
 
 function configurarNavegacion() {
-
-    const botones =
-        document.querySelectorAll("[data-view]");
-
+    const botones = document.querySelectorAll("[data-view]");
 
     botones.forEach(boton => {
+        boton.addEventListener("click", () => {
+            const vista = boton.dataset.view;
 
-        boton.addEventListener(
-            "click",
-            () => {
+            if (!vista) return;
 
-                const vista =
-                    boton.dataset.view;
+            cambiarVista(vista);
 
-                if (!vista) {
-                    return;
-                }
-
-                cambiarVista(vista);
+            if (vista === "dashboard") {
+                void cargarDashboard();
             }
-        );
-
+        });
     });
 }
-
 
 // =========================================================
 // CAMBIAR VISTA
 // =========================================================
 
 function cambiarVista(nombreVista) {
-
-    const vistas =
-        document.querySelectorAll(".admin-view");
-
-    const botones =
-        document.querySelectorAll(".admin-nav-item");
-
-
-    vistas.forEach(vista => {
-
+    document.querySelectorAll(".admin-view").forEach(vista => {
         vista.classList.remove("active");
-
     });
 
-
-    const vistaSeleccionada =
-        document.querySelector(
-            `#view-${nombreVista}`
-        );
-
+    const vistaSeleccionada = document.querySelector(
+        `#view-${nombreVista}`
+    );
 
     if (vistaSeleccionada) {
-
         vistaSeleccionada.classList.add("active");
-
     }
 
-
-    botones.forEach(boton => {
-
-        boton.classList.remove("active");
-
-        if (
+    document.querySelectorAll(".admin-nav-item").forEach(boton => {
+        boton.classList.toggle(
+            "active",
             boton.dataset.view === nombreVista
-        ) {
-            boton.classList.add("active");
-        }
-
+        );
     });
-
 
     actualizarTitulo(nombreVista);
 }
-
 
 // =========================================================
 // TÍTULO DEL HEADER
 // =========================================================
 
 function actualizarTitulo(nombreVista) {
+    const titulo = document.querySelector("#adminPageTitle");
 
-    const titulo =
-        document.querySelector("#adminPageTitle");
-
-    if (!titulo) {
-        return;
-    }
-
+    if (!titulo) return;
 
     const titulos = {
-
         dashboard: "Dashboard",
-
         inventario: "Inventario",
-
         historico: "Histórico",
-
         auditorias: "Auditorías",
-
         usuarios: "Usuarios",
-
         ubicaciones: "Ubicaciones",
-
         reportes: "Reportes",
-
         detalle: "Detalle del contenedor"
-
     };
 
-
-    titulo.textContent =
-        titulos[nombreVista] || "Administrador";
+    titulo.textContent = titulos[nombreVista] || "Administrador";
 }
-
 
 // =========================================================
 // REFRESCAR DASHBOARD
 // =========================================================
 
-function cargarDashboard() {
+async function cargarDashboard() {
+    try {
+        const registros = await obtenerRegistros();
 
-    const registros =
-        obtenerRegistros();
+        mostrarFechaActual();
+        actualizarEstadisticas(registros);
+        mostrarUltimosRegistros(registros);
 
-    mostrarFechaActual();
+    } catch (error) {
+        console.error("Error al cargar el dashboard:", error);
 
-    actualizarEstadisticas(registros);
+        const tabla = document.querySelector("#dashboardRecentTable");
 
-    mostrarUltimosRegistros(registros);
-}
-
-
-// =========================================================
-// ACTUALIZACIÓN AUTOMÁTICA
-// =========================================================
-
-function escucharCambiosStorage() {
-
-    window.addEventListener(
-        "storage",
-        evento => {
-
-            if (
-                evento.key === STORAGE_KEY
-            ) {
-                cargarDashboard();
-            }
-
+        if (tabla) {
+            tabla.innerHTML = `
+                <tr>
+                    <td colspan="8" class="admin-empty">
+                        No fue posible conectar con el servidor.
+                    </td>
+                </tr>
+            `;
         }
-    );
-}
 
+        [
+            "#statTotal",
+            "#statVacios",
+            "#statCargadosProd",
+            "#statEquiposVacios",
+            "#statDanados",
+            "#statFotos"
+        ].forEach(selector => {
+            const elemento = document.querySelector(selector);
+
+            if (elemento) {
+                elemento.textContent = "—";
+            }
+        });
+    }
+}
 
 // =========================================================
 // INICIALIZACIÓN
 // =========================================================
 
 function iniciarDashboard() {
-
     configurarNavegacion();
 
-    escucharCambiosStorage();
+    void cargarDashboard();
 
-    cargarDashboard();
+    window.addEventListener("inventario:actualizado", () => {
+        void cargarDashboard();
+    });
 
-    console.log(
-        "Dashboard del administrador iniciado correctamente."
-    );
+    console.log("Dashboard del administrador iniciado correctamente.");
 }
-
 
 document.addEventListener(
     "DOMContentLoaded",
