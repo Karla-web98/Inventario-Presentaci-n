@@ -1,12 +1,13 @@
 from pathlib import Path
 
-from flask import Flask, jsonify, send_from_directory, send_file
+from flask import Flask, jsonify, request, send_from_directory, send_file
 
 from backend.routes.escanear import escanear_bp
 from dotenv import load_dotenv
 
 from backend.routes.contenedores import contenedores_bp
 from backend.routes.cortes import cortes_bp
+from backend.routes.reportes import reportes_bp
 
 load_dotenv()
 from backend.database import inicializar_db, verificar_conexion
@@ -16,7 +17,6 @@ import os
 from io import BytesIO
 from urllib.parse import urlparse
 import requests
-from flask import send_file
 
 # ============================================================
 # CONFIGURACIÓN
@@ -45,7 +45,7 @@ inicializar_db(app)
 app.register_blueprint(escanear_bp)
 app.register_blueprint(contenedores_bp)
 app.register_blueprint(cortes_bp)
-
+app.register_blueprint(reportes_bp)
 # ============================================================
 # PROXY DE FOTOGRAFÍAS DE CLOUDINARY
 # ============================================================

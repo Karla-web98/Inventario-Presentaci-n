@@ -9,9 +9,10 @@ import { listarContenedores } from "../api/contenedores.js";
 const API_CORTES = "/api/cortes";
 
 let graficosReportes = {
+    scac: null,
     estados: null,
-    patios: null,
-    fechas: null
+    scacStatus: null,
+    antiguedadScac: null
 };
 
 let registrosActuales = [];
@@ -91,6 +92,87 @@ function obtenerFechaRegistro(registro) {
 }
 
 // =====================================================
+// DATOS PARA ANÁLISIS POR SCAC
+// =====================================================
+
+function obtenerScac(registro) {
+    const valor =
+        registro.scac ??
+        registro.SCAC ??
+        registro.codigoScac ??
+        registro.codigo_scac ??
+        "";
+
+    const scac = String(valor).trim();
+
+    return /^\d{4}$/.test(scac)
+        ? scac
+        : "Pendiente de asignación";
+}
+
+function obtenerFechaParaAntiguedad(registro) {
+    const valor =
+        registro.fechaRegistro ||
+        registro.fecha_registro ||
+        registro.fecha ||
+        registro.createdAt ||
+        "";
+
+    if (!valor) return null;
+
+    // Evitar diferencias de día por interpretación UTC.
+    if (/^\d{4}-\d{2}-\d{2}$/.test(String(valor))) {
+        const fecha = new Date(`${valor}T00:00:00`);
+        return Number.isNaN(fecha.getTime()) ? null : fecha;
+    }
+
+    const fecha = new Date(valor);
+
+    return Number.isNaN(fecha.getTime())
+        ? null
+        : fecha;
+}
+
+function obtenerRangoAntiguedad(registro) {
+    const fecha = obtenerFechaParaAntiguedad(registro);
+
+    if (!fecha) return "Sin fecha";
+
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+
+    fecha.setHours(0, 0, 0, 0);
+
+    const dias = Math.max(
+        0,
+        Math.floor((hoy - fecha) / 86400000)
+    );
+
+    if (dias <= 7) return "0–7 días";
+    if (dias <= 15) return "8–15 días";
+    if (dias <= 30) return "16–30 días";
+
+    return "Más de 30 días";
+}
+
+function obtenerEstadosReporte() {
+    return [
+        "Vacío",
+        "Cargado Prod",
+        "Equipo vacío",
+        "Dañado"
+    ];
+}
+
+function obtenerEstadoNormalizado(registro) {
+    const estado = normalizarTexto(obtenerEstado(registro));
+
+    return obtenerEstadosReporte().find(
+        elemento => normalizarTexto(elemento) === estado
+    ) || "Sin estado";
+}
+
+// =====================================================
 // 2. PREPARAR DATOS PARA EXCEL
 // =====================================================
 
@@ -105,8 +187,7 @@ function obtenerEncabezadosInventario() {
         "OPERADOR",
         "FECHA",
         "HORA",
-        "OBSERVACIONES",
-        "CANTIDAD DE FOTOGRAFIAS"
+        "OBSERVACIONES"
     ];
 }
 
@@ -121,8 +202,7 @@ function prepararRegistroExcel(registro) {
         registro.operador ?? "",
         registro.fecha ?? obtenerFechaRegistro(registro),
         registro.hora ?? "",
-        registro.observaciones ?? "",
-        obtenerFotografias(registro)
+        registro.observaciones ?? ""
     ];
 }
 
@@ -189,48 +269,136 @@ function destruirGraficos() {
     });
 
     graficosReportes = {
+        scac: null,
         estados: null,
-        patios: null,
-        fechas: null
+        scacStatus: null,
+        antiguedadScac: null
     };
 }
 
-function crearGraficosReportes() {
-    const estadisticas = calcularEstadisticas(registrosActuales);
+function obtenerOpcionesEjes() {
+    return {
+        responsive: true,
+        maintainAspectRatio: false,
 
-    const canvasEstados = document.querySelector("#chartEstados");
-    const canvasPatios = document.querySelector("#chartPatios");
-    const canvasFechas = document.querySelector("#chartFechas");
+        plugins: {
+            legend: {
+                position: "bottom"
+            }
+        },
 
-    if (!canvasEstados || !canvasPatios || !canvasFechas) return;
+        scales: {
+            y: {
+                beginAtZero: true,
+                ticks: {
+                    precision: 0
+                }
+            }
+        }
+    };
+}
 
-    if (typeof Chart === "undefined") {
-        console.error("No se pudo cargar Chart.js.");
-        return;
-    }
+function obtenerScacsOrdenados() {
+    const scacs = [
+        ...new Set(registrosActuales.map(obtenerScac))
+    ];
 
-    destruirGraficos();
+    return scacs.sort((a, b) => {
+        if (a === "Pendiente de asignación") return 1;
+        if (b === "Pendiente de asignación") return -1;
 
-    // Gráfico de estados
-    graficosReportes.estados = new Chart(canvasEstados, {
-        type: "doughnut",
+        return a.localeCompare(b);
+    });
+}
+
+function crearGraficoTotalScac(scacs) {
+    const canvas = document.querySelector("#chartScac");
+
+    if (!canvas) return;
+
+    const cantidades = scacs.map(scac =>
+        registrosActuales.filter(
+            registro => obtenerScac(registro) === scac
+        ).length
+    );
+
+    graficosReportes.scac = new Chart(canvas, {
+        type: "bar",
+
         data: {
-            labels: Object.keys(estadisticas.estados),
+            labels: scacs,
+
             datasets: [{
-                data: Object.values(estadisticas.estados),
+                label: "Total de cajas",
+                data: cantidades,
+
+                backgroundColor: "#2563eb",
+                borderRadius: 6
+            }]
+        },
+
+        options: {
+            ...obtenerOpcionesEjes(),
+
+            indexAxis: "y",
+
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+
+            scales: {
+                x: {
+                    beginAtZero: true,
+                    ticks: {
+                        precision: 0
+                    }
+                }
+            }
+        }
+    });
+}
+
+function crearGraficoEstados() {
+    const canvas = document.querySelector("#chartEstados");
+
+    if (!canvas) return;
+
+    const estados = obtenerEstadosReporte();
+
+    const cantidades = estados.map(estado =>
+        registrosActuales.filter(
+            registro =>
+                obtenerEstadoNormalizado(registro) === estado
+        ).length
+    );
+
+    graficosReportes.estados = new Chart(canvas, {
+        type: "doughnut",
+
+        data: {
+            labels: estados,
+
+            datasets: [{
+                data: cantidades,
+
                 backgroundColor: [
                     "#16a34a",
                     "#f59e0b",
                     "#6366f1",
                     "#dc2626"
                 ],
+
                 borderWidth: 2,
                 borderColor: "#ffffff"
             }]
         },
+
         options: {
             responsive: true,
             maintainAspectRatio: false,
+
             plugins: {
                 legend: {
                     position: "bottom"
@@ -238,67 +406,63 @@ function crearGraficosReportes() {
             }
         }
     });
+}
 
-    // Gráfico de cajas por patio
-    graficosReportes.patios = new Chart(canvasPatios, {
+function crearGraficoScacStatus(scacs) {
+    const canvas = document.querySelector("#chartScacStatus");
+
+    if (!canvas) return;
+
+    const estados = obtenerEstadosReporte();
+
+    const colores = [
+        "#16a34a",
+        "#f59e0b",
+        "#6366f1",
+        "#dc2626"
+    ];
+
+    const datasets = estados.map((estado, indice) => ({
+        label: estado,
+
+        data: scacs.map(scac =>
+            registrosActuales.filter(registro =>
+                obtenerScac(registro) === scac &&
+                obtenerEstadoNormalizado(registro) === estado
+            ).length
+        ),
+
+        backgroundColor: colores[indice],
+        borderRadius: 4
+    }));
+
+    graficosReportes.scacStatus = new Chart(canvas, {
         type: "bar",
+
         data: {
-            labels: Object.keys(estadisticas.patios),
-            datasets: [{
-                label: "Cajas registradas",
-                data: Object.values(estadisticas.patios),
-                backgroundColor: "#3b82f6",
-                borderRadius: 6
-            }]
+            labels: scacs,
+            datasets
         },
+
         options: {
             responsive: true,
             maintainAspectRatio: false,
+
             plugins: {
                 legend: {
-                    display: false
+                    position: "bottom"
                 }
             },
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    ticks: {
-                        precision: 0
-                    }
-                }
-            }
-        }
-    });
 
-    // Gráfico de registros por fecha
-    const fechasOrdenadas = Object.keys(estadisticas.fechas).sort();
-
-    graficosReportes.fechas = new Chart(canvasFechas, {
-        type: "line",
-        data: {
-            labels: fechasOrdenadas,
-            datasets: [{
-                label: "Registros",
-                data: fechasOrdenadas.map(
-                    fecha => estadisticas.fechas[fecha]
-                ),
-                borderColor: "#6366f1",
-                backgroundColor: "rgba(99, 102, 241, 0.15)",
-                fill: true,
-                tension: 0.3
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    display: false
-                }
-            },
             scales: {
+                x: {
+                    stacked: true
+                },
+
                 y: {
+                    stacked: true,
                     beginAtZero: true,
+
                     ticks: {
                         precision: 0
                     }
@@ -308,6 +472,106 @@ function crearGraficosReportes() {
     });
 }
 
+function crearGraficoAntiguedadScac(scacs) {
+    const canvas = document.querySelector("#chartAntiguedadScac");
+
+    if (!canvas) return;
+
+    const rangos = [
+        "0–7 días",
+        "8–15 días",
+        "16–30 días",
+        "Más de 30 días",
+        "Sin fecha"
+    ];
+
+    const colores = [
+        "#16a34a",
+        "#3b82f6",
+        "#f59e0b",
+        "#dc2626",
+        "#94a3b8"
+    ];
+
+    const datasets = rangos.map((rango, indice) => ({
+        label: rango,
+
+        data: scacs.map(scac =>
+            registrosActuales.filter(registro =>
+                obtenerScac(registro) === scac &&
+                obtenerRangoAntiguedad(registro) === rango
+            ).length
+        ),
+
+        backgroundColor: colores[indice],
+        borderRadius: 4
+    }));
+
+    graficosReportes.antiguedadScac = new Chart(canvas, {
+        type: "bar",
+
+        data: {
+            labels: scacs,
+            datasets
+        },
+
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+
+            plugins: {
+                legend: {
+                    position: "bottom"
+                }
+            },
+
+            scales: {
+                x: {
+                    stacked: true
+                },
+
+                y: {
+                    stacked: true,
+                    beginAtZero: true,
+
+                    ticks: {
+                        precision: 0
+                    }
+                }
+            }
+        }
+    });
+}
+
+function crearGraficosReportes() {
+    if (typeof Chart === "undefined") {
+        console.error("No se pudo cargar Chart.js.");
+        return;
+    }
+
+    const canvasScac = document.querySelector("#chartScac");
+    const canvasEstados = document.querySelector("#chartEstados");
+    const canvasScacStatus = document.querySelector("#chartScacStatus");
+    const canvasAntiguedad = document.querySelector("#chartAntiguedadScac");
+
+    if (
+        !canvasScac ||
+        !canvasEstados ||
+        !canvasScacStatus ||
+        !canvasAntiguedad
+    ) {
+        return;
+    }
+
+    destruirGraficos();
+
+    const scacs = obtenerScacsOrdenados();
+
+    crearGraficoTotalScac(scacs);
+    crearGraficoEstados();
+    crearGraficoScacStatus(scacs);
+    crearGraficoAntiguedadScac(scacs);
+}
 
 // =====================================================
 // 5. GENERAR HOJAS DE EXCEL
@@ -605,7 +869,6 @@ async function crearHojaEvidencias(libro, registros) {
             };
         });
     });
-
     // Recuperar fotografías en grupos para controlar el consumo de memoria.
     const evidenciasConImagen = evidencias
         .map((evidencia, indice) => ({
@@ -613,15 +876,12 @@ async function crearHojaEvidencias(libro, registros) {
             fila: indice + 2
         }))
         .filter(evidencia => evidencia.url);
-
     const tamanoLote = 6;
-
     for (let inicio = 0; inicio < evidenciasConImagen.length; inicio += tamanoLote) {
         const lote = evidenciasConImagen.slice(
             inicio,
             inicio + tamanoLote
         );
-
         const imagenes = await Promise.all(
             lote.map(async evidencia => {
                 try {
@@ -636,13 +896,11 @@ async function crearHojaEvidencias(libro, registros) {
                 }
             })
         );
-
         imagenes.forEach(({ evidencia, imagen }) => {
             const imagenId = libro.addImage({
                 base64: imagen,
                 extension: "jpeg"
             });
-
             hoja.addImage(imagenId, {
                 tl: {
                     col: 3,
@@ -655,7 +913,6 @@ async function crearHojaEvidencias(libro, registros) {
             });
         });
     }
-
     hoja.views = [{ state: "frozen", ySplit: 1 }];
     hoja.autoFilter = {
         from: "A1",
@@ -663,9 +920,7 @@ async function crearHojaEvidencias(libro, registros) {
     };
 }
 
-// =====================================================
-// 9. DESCARGAR LIBRO EXCEL COMPLETO
-// =====================================================
+// 9. DESCARGA EL LIBRO EXCEL COMPLETO
 
 async function descargarLibroExcel(nombreArchivo, registros) {
     if (typeof ExcelJS === "undefined") {
@@ -675,38 +930,14 @@ async function descargarLibroExcel(nombreArchivo, registros) {
     const libro = new ExcelJS.Workbook();
 
     libro.creator = "Inventario Digitalizado";
-    libro.subject = "Reporte de inventario y evidencias fotográficas";
-    libro.title = "Reporte de inventario";
+    libro.subject = "Reporte de inventario";
+    libro.title = "Inventario";
     libro.created = new Date();
 
-    const estadisticas = calcularEstadisticas(registros);
+    // Única hoja del archivo.
+    const hoja = libro.addWorksheet("Inventario");
 
-    // Hoja 1: Resumen
-    crearHojaResumen(
-        libro.addWorksheet("Resumen"),
-        estadisticas
-    );
-
-    // Hoja 2: Inventario
-    crearHojaInventario(
-        libro.addWorksheet("Inventario"),
-        registros
-    );
-
-    // Hoja 3: Estadísticas
-    crearHojaEstadisticas(
-        libro.addWorksheet("Estadisticas"),
-        estadisticas
-    );
-
-    // Hoja 4: Por patio
-    crearHojaPatios(
-        libro.addWorksheet("Por patio"),
-        estadisticas
-    );
-
-    // Hoja 5: Todas las evidencias fotográficas
-    await crearHojaEvidencias(libro, registros);
+    crearHojaInventario(hoja, registros);
 
     const contenido = await libro.xlsx.writeBuffer();
 
@@ -730,41 +961,110 @@ async function descargarLibroExcel(nombreArchivo, registros) {
     URL.revokeObjectURL(url);
 }
 
+
 // =====================================================
-// 10. EXPORTAR INVENTARIO ACTUAL
+// EXPORTAR GRÁFICAS INDIVIDUALES A EXCEL
 // =====================================================
 
-async function exportarInventarioActual() {
-    const boton = document.querySelector("#exportCurrentInventory");
+async function exportarGraficaExcel(tipo, grafico, boton, nombreArchivo) {
+    const textoOriginal = boton?.textContent || "Exportar a Excel";
 
     try {
+        if (!grafico || !grafico.data) {
+            throw new Error("La gráfica todavía no está disponible.");
+        }
+
+        const labels = grafico.data.labels || [];
+
+        const datasets = grafico.data.datasets.map((dataset, indice) => ({
+            label: dataset.label || `Serie ${indice + 1}`,
+            data: Array.from(dataset.data || [])
+        }));
+
+        if (!labels.length || !datasets.length) {
+            throw new Error("La gráfica no contiene datos para exportar.");
+        }
+
         if (boton) {
             boton.disabled = true;
             boton.textContent = "Preparando Excel...";
         }
 
-        const registros = await obtenerRegistrosActuales();
+        const response = await fetch("/api/reportes/exportar-grafica", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                tipo,
+                labels,
+                datasets
+            })
+        });
 
+        if (!response.ok) {
+            let resultado = {};
+
+            try {
+                resultado = await response.json();
+            } catch (error) {
+                // La respuesta no contiene JSON.
+            }
+
+            throw new Error(
+                resultado.error || "No fue posible generar el archivo Excel."
+            );
+        }
+
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+
+        const enlace = document.createElement("a");
+        enlace.href = url;
+        enlace.download = nombreArchivo;
+
+        document.body.appendChild(enlace);
+        enlace.click();
+        enlace.remove();
+
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+    } catch (error) {
+        console.error("Error al exportar gráfica:", error);
+        alert(error.message);
+
+    } finally {
+        if (boton) {
+            boton.disabled = false;
+            boton.textContent = textoOriginal;
+        }
+    }
+}
+
+// 10. EXPORTAR INVENTARIO ACTUAL
+async function exportarInventarioActual() {
+    const boton = document.querySelector("#exportCurrentInventory");
+    try {
+        if (boton) {
+            boton.disabled = true;
+            boton.textContent = "Preparando Excel...";
+        }
+        const registros = await obtenerRegistrosActuales();
         if (registros.length === 0) {
             alert("No hay registros para exportar.");
             return;
         }
-
         const fecha = new Date().toISOString().slice(0, 10);
-
         await descargarLibroExcel(
             `inventario_actual_${fecha}.xlsx`,
             registros
         );
-
     } catch (error) {
         console.error("Error al exportar inventario:", error);
-
         alert(
             "No fue posible completar la exportación.\n\n" +
             error.message
         );
-
     } finally {
         if (boton) {
             boton.disabled = false;
@@ -773,184 +1073,178 @@ async function exportarInventarioActual() {
     }
 }
 
-// =====================================================
 // 11. EXPORTAR CORTE HISTÓRICO
-// =====================================================
-
 async function exportarCorteHistorico(idCorte) {
     const boton = document.querySelector("#exportHistoryButton");
-
     try {
         if (boton) {
             boton.disabled = true;
             boton.textContent = "Preparando Excel...";
         }
-
         const cortes = await obtenerCortesHistoricos();
-
         const corte = cortes.find(
             item => String(item.id) === String(idCorte)
         );
-
         if (!corte) {
             alert("No se encontró el corte histórico seleccionado.");
             return;
         }
-
         const registros = Array.isArray(corte.registros)
             ? corte.registros
             : [];
-
         const fecha = String(corte.fecha || "sin_fecha")
             .replace(/[^\w-]/g, "_");
-
         await descargarLibroExcel(
             `inventario_historico_${fecha}.xlsx`,
             registros
         );
-
     } catch (error) {
         console.error("Error al exportar corte histórico:", error);
-
         alert(
             "No fue posible completar la exportación.\n\n" +
             error.message
         );
-
     } finally {
         if (boton) {
             boton.disabled = !document.querySelector(
                 "#exportHistorySelect"
             )?.value;
-
             boton.textContent = "Descargar Excel";
         }
     }
 }
-// =====================================================
-// 12. CARGAR CORTES EN EL SELECTOR
-// =====================================================
 
+// 12. CARGAR CORTES EN EL SELECTOR
 async function cargarSelectorCortes() {
     const selector = document.querySelector("#exportHistorySelect");
     const boton = document.querySelector("#exportHistoryButton");
-
     if (!selector || !boton) return;
-
     selector.innerHTML = `
         <option value="">Cargando cortes históricos...</option>
     `;
-
     boton.disabled = true;
-
     try {
         cortesExportables = await obtenerCortesHistoricos();
-
         selector.innerHTML = "";
-
         if (cortesExportables.length === 0) {
             selector.innerHTML = `
                 <option value="">No hay cortes históricos disponibles</option>
             `;
             return;
         }
-
         selector.innerHTML = `
             <option value="">Selecciona un corte histórico</option>
         `;
-
         cortesExportables.forEach((corte, indice) => {
             const opcion = document.createElement("option");
-
             opcion.value = corte.id;
-
             const fecha = corte.fecha ||
                 corte.fecha_hora ||
                 corte.fechaHora ||
                 `Corte ${indice + 1}`;
-
             opcion.textContent = `${fecha} — ${
                 Array.isArray(corte.registros)
                     ? corte.registros.length
                     : 0
             } contenedores`;
-
             selector.appendChild(opcion);
         });
-
     } catch (error) {
         console.error("Error al cargar cortes:", error);
-
         selector.innerHTML = `
             <option value="">Error al consultar los cortes</option>
         `;
     }
-
     boton.disabled = !selector.value;
 }
-
-// =====================================================
 // 13. ACTUALIZAR ESTADÍSTICAS DE REPORTES
-// =====================================================
-
 function actualizarResumenReportes() {
     const estadisticas = calcularEstadisticas(registrosActuales);
-
     const total = document.querySelector("#reportTotal");
     const totalFotos = document.querySelector("#reportTotalFotos");
-
     if (total) {
         total.textContent = estadisticas.total;
     }
-
     if (totalFotos) {
         totalFotos.textContent = estadisticas.totalFotos;
     }
 }
-
-// =====================================================
 // 14. INICIALIZAR EXPORTACIONES
-// =====================================================
-
 function inicializarExportaciones() {
     const botonInventario = document.querySelector(
         "#exportCurrentInventory"
     );
-
     const selectorHistorico = document.querySelector(
         "#exportHistorySelect"
     );
-
     const botonHistorico = document.querySelector(
         "#exportHistoryButton"
     );
-
     if (botonInventario) {
         botonInventario.addEventListener(
             "click",
             exportarInventarioActual
         );
     }
-
     if (selectorHistorico && botonHistorico) {
         selectorHistorico.addEventListener("change", () => {
             botonHistorico.disabled = !selectorHistorico.value;
         });
-
         botonHistorico.addEventListener("click", () => {
             const idCorte = selectorHistorico.value;
-
             if (!idCorte) {
                 alert("Selecciona un corte histórico.");
                 return;
             }
-
             exportarCorteHistorico(idCorte);
         });
     }
+    
+    // Conectar botones de exportación de gráficas.
+    const botonesGraficas = [
+        {
+            id: "#exportChartScac",
+            tipo: "scac",
+            obtenerGrafica: () => graficosReportes.scac,
+            nombre: "Reporte_SCAC.xlsx"
+        },
+        {
+            id: "#exportChartEstados",
+            tipo: "estados",
+            obtenerGrafica: () => graficosReportes.estados,
+            nombre: "Reporte_Estados.xlsx"
+        },
+        {
+            id: "#exportChartScacStatus",
+            tipo: "scacStatus",
+            obtenerGrafica: () => graficosReportes.scacStatus,
+            nombre: "Reporte_SCAC_Status.xlsx"
+        },
+        {
+            id: "#exportChartAntiguedadScac",
+            tipo: "antiguedadScac",
+            obtenerGrafica: () => graficosReportes.antiguedadScac,
+            nombre: "Reporte_Antiguedad_SCAC.xlsx"
+        }
+    ];
+
+    botonesGraficas.forEach(configuracion => {
+        const boton = document.querySelector(configuracion.id);
+
+        if (!boton) return;
+
+        boton.addEventListener("click", () => {
+            exportarGraficaExcel(
+                configuracion.tipo,
+                configuracion.obtenerGrafica(),
+                boton,
+                configuracion.nombre
+            );
+        });
+    });
 
     // Cargar datos del servidor.
-    Promise.all([
+        Promise.all([
         obtenerRegistrosActuales(),
         cargarSelectorCortes()
     ])
@@ -958,8 +1252,12 @@ function inicializarExportaciones() {
             registrosActuales = Array.isArray(registros)
                 ? registros
                 : [];
-
             actualizarResumenReportes();
+            if (
+                document.querySelector("#view-reportes")?.classList.contains("active")
+            ) {
+                crearGraficosReportes();
+            }
         })
         .catch(error => {
             console.error(
@@ -967,7 +1265,26 @@ function inicializarExportaciones() {
                 error
             );
         });
-
+    // Mantener los reportes actualizados cuando cambia el inventario.
+    window.addEventListener("inventario:actualizado", async () => {
+        try {
+            const registros = await obtenerRegistrosActuales();
+            registrosActuales = Array.isArray(registros)
+                ? registros
+                : [];
+            actualizarResumenReportes();
+            if (
+                document.querySelector("#view-reportes")?.classList.contains("active")
+            ) {
+                crearGraficosReportes();
+            }
+        } catch (error) {
+            console.error(
+                "No fue posible actualizar las gráficas:",
+                error
+            );
+        }
+    });
     // Crear gráficos cuando se abra la sección Reportes.
     document.querySelectorAll('[data-view="reportes"]').forEach(boton => {
         boton.addEventListener("click", () => {
@@ -978,10 +1295,7 @@ function inicializarExportaciones() {
     });
 }
 
-// =====================================================
 // 15. INICIO
-// =====================================================
-
 if (document.readyState === "loading") {
     document.addEventListener(
         "DOMContentLoaded",
