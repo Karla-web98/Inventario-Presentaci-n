@@ -1,4 +1,5 @@
-﻿import uuid
+﻿
+import uuid
 from datetime import datetime
 
 from flask import Blueprint, jsonify, request
@@ -92,21 +93,61 @@ def guardar_corte():
                 "error": "El resumen del corte no es válido."
             }), 400
 
-        # Evitar generar más de un corte por día.
+        # Buscar si ya existe un corte para esta fecha.
         existente = CorteHistorico.query.filter_by(
             fecha=fecha
         ).first()
 
+        # Solo permitir reemplazarlo mediante una importación explícita.
+        reemplazar = datos.get("reemplazar") is True
+
         if existente:
+            if not reemplazar:
+                return jsonify({
+                    "ok": True,
+                    "creado": False,
+                    "mensaje": "Ya existe un corte para esta fecha.",
+                    "corte": serializar_corte(existente)
+                }), 200
+
+            # Validar la fecha y hora antes de modificar el corte.
+            fecha_hora = datos.get("fechaHora")
+            nueva_fecha_hora = None
+
+            if fecha_hora:
+                try:
+                    nueva_fecha_hora = datetime.fromisoformat(
+                        str(fecha_hora).replace("Z", "+00:00")
+                    )
+                except ValueError:
+                    return jsonify({
+                        "ok": False,
+                        "error": "La fecha y hora del corte no son válidas."
+                    }), 400
+
+            # Reemplazar datos sin cambiar ID ni fecha.
+            existente.resumen = resumen
+            existente.registros = registros
+
+            if nueva_fecha_hora:
+                existente.fecha_hora = nueva_fecha_hora
+
+            db.session.commit()
+
             return jsonify({
                 "ok": True,
                 "creado": False,
-                "mensaje": "Ya existe un corte para esta fecha.",
+                "actualizado": True,
+                "mensaje": "Corte histórico reemplazado correctamente.",
                 "corte": serializar_corte(existente)
             }), 200
 
+        # Crear un corte nuevo si todavía no existe.
         nuevo_corte = CorteHistorico(
-            id=str(datos.get("id") or f"corte-{fecha}-{uuid.uuid4().hex[:8]}"),
+            id=str(
+                datos.get("id")
+                or f"corte-{fecha}-{uuid.uuid4().hex[:8]}"
+            ),
             fecha=fecha,
             resumen=resumen,
             registros=registros
@@ -138,8 +179,8 @@ def guardar_corte():
     except IntegrityError:
         db.session.rollback()
 
-        # Puede ocurrir si dos dispositivos crean el corte
-        # del mismo día prácticamente al mismo tiempo.
+        # Evitar duplicados si dos dispositivos crean
+        # un corte para la misma fecha al mismo tiempo.
         existente = CorteHistorico.query.filter_by(
             fecha=fecha
         ).first()
