@@ -190,11 +190,16 @@ function obtenerEncabezadosInventario() {
         "OBSERVACIONES"
     ];
 }
-
 function prepararRegistroExcel(registro) {
     return [
-        registro.numero ?? registro.contenedor ?? "",
-        registro.carrier ?? "",
+        registro.numero ??
+        registro.caja ??
+        registro.numeroCaja ??
+        registro.identificador ??
+        registro.contenedor ??
+        "",
+
+        registro.carrier ?? registro.transportista ?? "",
         obtenerEstado(registro),
         registro.ubicacion ?? "",
         registro.patio ?? "",
@@ -205,6 +210,7 @@ function prepararRegistroExcel(registro) {
         registro.observaciones ?? ""
     ];
 }
+
 
 // =====================================================
 // 3. CALCULAR ESTADÍSTICAS
