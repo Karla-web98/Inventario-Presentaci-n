@@ -33,17 +33,18 @@
         }
 
         .role-header .logo {
-            width: 64px;
-            height: 64px;
+            width: 180px;
+            height: 90px;
             margin: 0 auto 18px;
-            border-radius: 16px;
-            background: var(--primary);
             display: flex;
             align-items: center;
             justify-content: center;
-            color: white;
-            font-size: 28px;
-            font-weight: 800;
+        }
+
+        .role-header .logo img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
         }
 
         .role-header h1 {
@@ -154,7 +155,10 @@
             <header class="role-header">
 
                 <div class="logo">
-                    ID
+            <img
+                src="/static/assets/logos/Stellantis-Logo.png"
+                alt="Stellantis"
+            >
                 </div>
 
                 <h1>
@@ -189,13 +193,13 @@
                         </h2>
 
                         <p>
-                            Registra cajas, utiliza el escáner OCR,
+                            Registra cajas, utiliza el escáner de códigos,
                             captura evidencias y consulta tus registros.
                         </p>
                     </div>
 
                     <span class="role-action">
-                        Entrar como operador →
+                        Adelante Operador 
                     </span>
 
                 </article>
@@ -225,7 +229,7 @@
                     </div>
 
                     <span class="role-action">
-                        Entrar como administrador →
+                        Adelante Administrador
                     </span>
 
                 </article>

@@ -40,602 +40,285 @@
 
             <div class="admin-brand">
 
-                <div class="admin-brand-icon">
+    <div class="admin-brand-logo">
+        <img
+            src="/static/assets/logos/Logo-Stellantis Blanco.png"
+            alt="Stellantis"
+        >
+    </div>
 
-                    ID
-
-                </div>
-
-
-
-                <div>
-
-                    <strong>Inventario</strong>
-
-                    <span>Digitalizado</span>
-
-                </div>
+    <div class="admin-brand-text">
+        
+    </div>
 
             </div>
-
-
 
             <div class="admin-profile">
 
                 <div class="admin-avatar">
-
-                    A
-
+                    STLD
                 </div>
-
-
 
                 <div>
-
-                    <strong>Administrador</strong>
-
-                    <span>Administrador</span>
-
+                    <strong>ADMINISTRADOR</strong>
+                    <small>Personal Administrativo</small>
                 </div>
-
             </div>
-
-
 
             <nav class="admin-nav">
 
-
-
                 <button
-
                     class="admin-nav-item active"
-
                     data-view="dashboard"
-
                 >
-
                     <span>▦</span>
-
                     Dashboard
-
                 </button>
 
-
-
                 <button
-
                     class="admin-nav-item"
-
                     data-view="inventario"
-
                 >
-
                     <span>▤</span>
-
                     Inventario
-
                 </button>
 
-
-
                 <button
-
                     class="admin-nav-item"
-
                     data-view="historico"
-
                 >
-
                     <span>◷</span>
-
                     Histórico
-
                 </button>
 
-
-
                 <button
-
                     class="admin-nav-item"
-
                     data-view="auditorias"
-
                 >
-
                     <span>✓</span>
-
                     Auditorías
-
                 </button>
 
-
-
                 <button
-
                     class="admin-nav-item"
-
                     data-view="usuarios"
-
                 >
-
                     <span>♙</span>
-
                     Usuarios
-
                 </button>
 
-
-
                 <button
-
                     class="admin-nav-item"
-
                     data-view="ubicaciones"
-
                 >
-
                     <span>⌖</span>
-
                     Ubicaciones
-
                 </button>
-
-
 
                 <button
-
                     class="admin-nav-item"
-
                     data-view="reportes"
-
                 >
-
                     <span>▥</span>
-
                     Reportes
-
                 </button>
-
-
-
             </nav>
 
-
-
             <div class="admin-sidebar-footer">
-
                 <button
-
                     class="admin-nav-item"
-
                     onclick="window.location.href='/'"
-
                 >
-
                     <span>←</span>
-
                     Regresar
-
                 </button>
-
             </div>
-
-
-
         </aside>
 
-
-
         <!-- CONTENIDO PRINCIPAL -->
-
         <main class="admin-main">
 
-
-
             <!-- HEADER -->
-
             <header class="admin-header">
-
-
-
                 <div>
-
-                    <p class="admin-header-label">
-
-                        Panel de administración
-
-                    </p>
-
-
-
                     <h1 id="adminPageTitle">
-
                         Dashboard
-
                     </h1>
-
                 </div>
-
-
 
                 <div class="admin-header-user">
-
-
-
                     <div class="admin-header-avatar">
-
                         A
-
                     </div>
-
-
-
                     <div>
-
                         <strong>Administrador</strong>
-
                         <span>Sesión activa</span>
-
                     </div>
-
-
-
                 </div>
-
-
-
             </header>
 
-
-
             <!-- DASHBOARD -->
-
             <section
-
                 id="view-dashboard"
-
                 class="admin-view active"
-
             >
-
-
-
                 <div class="admin-welcome">
-
-
-
                     <div>
-
                         <h2>Resumen del inventario</h2>
-
-
-
                         <p>
-
                             Consulta el estado general de las cajas
-
                             registradas en el sistema.
-
                         </p>
-
                     </div>
-
-
 
                     <div class="admin-date">
-
                         <span>Fecha</span>
-
                         <strong id="currentDate">
-
                             --
-
                         </strong>
-
                     </div>
-
-
-
                 </div>
 
-
-
                 <!-- RESUMEN DEL INVENTARIO -->
-
             <div class="admin-stats-grid">
-
                 <article class="admin-stat-card">
-
                 <div class="admin-stat-icon blue">▤</div>
-
             <div>
-
             <span>Total de cajas</span>
-
                 <strong id="statTotal">0</strong>
-
             </div>
-
             </article>
 
-
-
         <article class="admin-stat-card">
-
             <div class="admin-stat-icon green">▣</div>
-
         <div>
 
             <span>Cajas en T-REX</span>
-
             <strong id="statTrex">0</strong>
-
         </div>
-
     </article>
-
-
 
     <article class="admin-stat-card">
-
         <div class="admin-stat-icon purple">▣</div>
-
         <div>
-
             <span>Cajas en Fósil</span>
-
             <strong id="statFosil">0</strong>
-
         </div>
-
     </article>
-
 </div>
 
 
 
 <!-- DISTRIBUCIÓN POR PATIO -->
-
 <div class="admin-table-card" style="padding: 24px; margin-bottom: 28px;">
 
-
-
     <div class="admin-section-header">
-
         <div>
-
             <h2>Distribución de cajas por patio</h2>
-
             <p>Comparación del inventario actual entre T-REX y Fósil.</p>
-
         </div>
-
     </div>
-
 
 
     <div style="position: relative; height: 300px;">
-
         <canvas id="chartPatiosDashboard"></canvas>
-
     </div>
-
 </div>
 
                 <!-- ACCIONES -->
-
                 <div class="admin-section-header">
-
                     <div>
-
                         <h2>Acciones rápidas</h2>
 
-
-
                         <p>
-
                             Accede rápidamente a las principales
-
                             funciones administrativas.
-
                         </p>
-
                     </div>
-
                 </div>
-
-
 
                 <div class="admin-actions-grid">
-
-
-
                     <button
-
                         class="admin-action-card"
-
                         data-view="inventario"
-
                     >
-
                         <div class="admin-action-icon">
-
                             ▤
-
                         </div>
-
-
-
                         <div>
-
                             <strong>Consultar inventario</strong>
-
                             <span>Ver todas las cajas registradas.</span>
-
                         </div>
-
-
-
                         <b>→</b>
-
                     </button>
 
-
-
                     <button
-
                         class="admin-action-card"
-
                         data-view="historico"
-
                     >
-
                         <div class="admin-action-icon">
-
                             ◷
-
                         </div>
-
-
-
                         <div>
-
                             <strong>Consultar histórico</strong>
-
                             <span>Revisar registros anteriores.</span>
-
                         </div>
-
-
-
                         <b>→</b>
-
                     </button>
 
-
-
                     <button
-
                         class="admin-action-card"
-
                         data-view="auditorias"
-
                     >
-
                         <div class="admin-action-icon">
-
                             ✓
-
                         </div>
-
-
 
                         <div>
-
                             <strong>Auditorías</strong>
-
                             <span>Revisar actividad del sistema.</span>
-
                         </div>
-
-
-
                         <b>→</b>
-
                     </button>
-
-
 
                     <button
-
                         class="admin-action-card"
-
                         data-view="reportes"
-
                     >
-
                         <div class="admin-action-icon">
-
                             ▥
-
                         </div>
-
-
 
                         <div>
-
                             <strong>Generar reportes</strong>
-
                             <span>Consultar y exportar información.</span>
-
                         </div>
-
-
-
                         <b>→</b>
-
                     </button>
-
-
-
                 </div>
-
-
 
                 <!-- ÚLTIMOS REGISTROS -->
-
                 <div class="admin-section-header">
-
-
-
                     <div>
-
                         <h2>Últimos registros</h2>
-
-
-
                         <p>
-
                             Contenedores registrados recientemente.
-
                         </p>
-
                     </div>
 
-
-
                     <button
-
                         class="btn btn-secondary"
-
                         data-view="inventario"
-
                     >
-
                         Ver inventario
-
                     </button>
-
-
-
                 </div>
 
-
-
                 <div class="admin-table-card">
-
                     <div class="admin-table-wrapper">
-
-
-
                         <table class="admin-table">
-
-
-
                             <thead>
-
                                 <tr>
-
                                     <th>CAJA</th>
 
                                     <th>CARRIER</th>
