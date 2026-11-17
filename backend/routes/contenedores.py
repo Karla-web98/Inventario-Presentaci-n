@@ -88,6 +88,7 @@ def serializar_contenedor(contenedor):
 
     if isinstance(contenedor.datos_extra, dict):
         registro.update(contenedor.datos_extra)
+        registro["id"] = contenedor.id
 
     fotografias = sorted(
         contenedor.fotografias,
