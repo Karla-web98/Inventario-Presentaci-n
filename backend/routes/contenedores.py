@@ -1,4 +1,6 @@
+
 import os
+import time
 import uuid
 
 import cloudinary
@@ -6,8 +8,7 @@ import cloudinary.uploader
 import requests
 
 from urllib.parse import urlparse
-from flask import Response
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, Response
 from sqlalchemy import desc
 
 from backend.database import db
@@ -16,6 +17,10 @@ from backend.models import Contenedor, Fotografia
 
 contenedores_bp = Blueprint("contenedores", __name__)
 
+
+# ============================================================
+# CONFIGURACIÓN DE CLOUDINARY
+# ============================================================
 
 def configurar_cloudinary():
     cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME")
@@ -32,6 +37,10 @@ def configurar_cloudinary():
         secure=True
     )
 
+
+# ============================================================
+# SUBIR FOTOGRAFÍA
+# ============================================================
 
 def subir_fotografia(foto, contenedor_id, categoria, orden=0):
     if not isinstance(foto, dict):
@@ -52,7 +61,8 @@ def subir_fotografia(foto, contenedor_id, categoria, orden=0):
         folder="inventario/contenedores",
         resource_type="image",
         public_id=f"{contenedor_id}_{categoria}_{uuid.uuid4().hex}",
-        overwrite=False
+        overwrite=False,
+        timeout=30
     )
 
     return Fotografia(
@@ -66,6 +76,10 @@ def subir_fotografia(foto, contenedor_id, categoria, orden=0):
         orden=orden
     )
 
+
+# ============================================================
+# SERIALIZAR CONTENEDOR
+# ============================================================
 
 def serializar_contenedor(contenedor):
     registro = {
@@ -83,7 +97,7 @@ def serializar_contenedor(contenedor):
         "fechaRegistro": (
             contenedor.fecha_registro.isoformat()
             if contenedor.fecha_registro else None
-        ),
+        )
     }
 
     if isinstance(contenedor.datos_extra, dict):
@@ -107,7 +121,10 @@ def serializar_contenedor(contenedor):
     ]
 
     sello = next(
-        (foto for foto in fotografias if foto.categoria == "sello"),
+        (
+            foto for foto in fotografias
+            if foto.categoria == "sello"
+        ),
         None
     )
 
@@ -123,6 +140,10 @@ def serializar_contenedor(contenedor):
 
     return registro
 
+
+# ============================================================
+# LISTAR CONTENEDORES
+# ============================================================
 
 @contenedores_bp.route("/api/contenedores", methods=["GET"])
 def listar_contenedores():
@@ -141,16 +162,39 @@ def listar_contenedores():
             ]
         })
 
-    except Exception as error:
-        print("Error al consultar contenedores:", error)
+    except Exception:
+        db.session.rollback()
+
+        print(
+            "Error al consultar contenedores:",
+            flush=True
+        )
+
         return jsonify({
             "ok": False,
             "error": "No fue posible consultar el inventario."
         }), 500
 
+
+# ============================================================
+# REGISTRAR CONTENEDOR
+# ============================================================
+
 @contenedores_bp.route("/api/contenedores", methods=["POST"])
 def registrar_contenedor():
     subidas = []
+    inicio = time.perf_counter()
+    numero = "PENDIENTE"
+    commit_realizado = False
+
+    def medir(mensaje):
+        segundos = time.perf_counter() - inicio
+
+        print(
+            f"[REGISTRO {numero}] {mensaje}: {segundos:.2f} segundos",
+            flush=True
+        )
+
     try:
         datos = request.get_json(silent=True)
 
@@ -161,6 +205,8 @@ def registrar_contenedor():
             }), 400
 
         numero = str(datos.get("numero") or "").strip().upper()
+
+        medir("Datos recibidos")
 
         if not numero:
             return jsonify({
@@ -177,7 +223,10 @@ def registrar_contenedor():
         fotos_generales = datos.get("fotografias") or []
         foto_sello = datos.get("fotografiaSello")
 
-        if not isinstance(fotos_generales, list) or len(fotos_generales) > 5:
+        if (
+            not isinstance(fotos_generales, list)
+            or len(fotos_generales) > 5
+        ):
             return jsonify({
                 "ok": False,
                 "error": "Puedes registrar un máximo de 5 fotografías generales."
@@ -190,6 +239,7 @@ def registrar_contenedor():
             }), 400
 
         configurar_cloudinary()
+        medir("Cloudinary configurado")
 
         contenedor_id = str(uuid.uuid4())
 
@@ -222,10 +272,14 @@ def registrar_contenedor():
                 clave: valor
                 for clave, valor in datos.items()
                 if clave not in campos
-                and clave not in ("fotografias", "fotografiaSello")
+                and clave not in (
+                    "fotografias",
+                    "fotografiaSello"
+                )
             }
         )
 
+        # Subir fotografías generales.
         for indice, foto in enumerate(fotos_generales):
             fotografia = subir_fotografia(
                 foto,
@@ -233,43 +287,81 @@ def registrar_contenedor():
                 "general",
                 indice
             )
+
             fotografia.contenedor = registro
             subidas.append(fotografia)
 
+            medir(
+                f"Fotografía general {indice + 1} subida"
+            )
+
+        # Subir fotografía del sello, si existe.
         if foto_sello:
             fotografia = subir_fotografia(
                 foto_sello,
                 contenedor_id,
                 "sello"
             )
+
             fotografia.contenedor = registro
             subidas.append(fotografia)
 
+            medir("Fotografía del sello subida")
+
+        # Guardar información en PostgreSQL.
         db.session.add(registro)
         db.session.add_all(subidas)
         db.session.commit()
 
+        commit_realizado = True
+
+        medir("Registro confirmado en PostgreSQL")
+
+        # Preparar respuesta.
+        respuesta = serializar_contenedor(registro)
+
+        medir("Respuesta preparada")
+
         return jsonify({
             "ok": True,
             "mensaje": "Contenedor registrado correctamente.",
-            "registro": serializar_contenedor(registro)
+            "registro": respuesta
         }), 201
 
     except Exception as error:
-        db.session.rollback()
+        if not commit_realizado:
+            db.session.rollback()
 
-        for foto in subidas:
-            if foto.public_id:
-                try:
-                    cloudinary.uploader.destroy(foto.public_id)
-                except Exception as error_cloudinary:
-                    print("No se pudo limpiar una imagen:", error_cloudinary)
+        print(
+            f"[REGISTRO {numero}] Error al registrar contenedor: {error}",
+            flush=True
+        )
 
-        print("Error al registrar contenedor:", error)
+        # Limpiar imágenes únicamente si la transacción
+        # todavía no se confirmó en PostgreSQL.
+        if not commit_realizado:
+            for foto in subidas:
+                if foto.public_id:
+                    try:
+                        cloudinary.uploader.destroy(
+                            foto.public_id,
+                            resource_type="image",
+                            timeout=15
+                        )
 
-        mensaje = str(error)
+                    except Exception as error_cloudinary:
+                        print(
+                            "No se pudo limpiar una imagen:",
+                            error_cloudinary,
+                            flush=True
+                        )
 
-        if "duplicate key" in mensaje.lower() or "unique constraint" in mensaje.lower():
+        mensaje = str(error).lower()
+
+        if (
+            "duplicate key" in mensaje
+            or "unique constraint" in mensaje
+        ):
             return jsonify({
                 "ok": False,
                 "error": "Ya existe un contenedor registrado con ese número."
@@ -277,15 +369,27 @@ def registrar_contenedor():
 
         return jsonify({
             "ok": False,
-            "error": "No fue posible guardar el contenedor. Inténtalo nuevamente."
+            "error": (
+                "No fue posible guardar el contenedor. "
+                "Inténtalo nuevamente."
+            )
         }), 500
 
 
+# ============================================================
+# ELIMINAR CONTENEDOR
+# ============================================================
 
-@contenedores_bp.route("/api/contenedores/<string:contenedor_id>", methods=["DELETE"])
+@contenedores_bp.route(
+    "/api/contenedores/<string:contenedor_id>",
+    methods=["DELETE"]
+)
 def eliminar_contenedor(contenedor_id):
     try:
-        registro = db.session.get(Contenedor, contenedor_id)
+        registro = db.session.get(
+            Contenedor,
+            contenedor_id
+        )
 
         if not registro:
             return jsonify({
@@ -293,9 +397,9 @@ def eliminar_contenedor(contenedor_id):
                 "error": "El contenedor no existe."
             }), 404
 
-        # Elimina el contenedor y sus registros de fotografías
-        # en PostgreSQL, pero conserva los archivos en Cloudinary.
-        # Los cortes históricos pueden seguir utilizando sus URL.
+        # Eliminar registros de PostgreSQL.
+        # Las imágenes permanecen en Cloudinary para
+        # conservar las referencias de los cortes históricos.
         db.session.delete(registro)
         db.session.commit()
 
@@ -306,7 +410,12 @@ def eliminar_contenedor(contenedor_id):
 
     except Exception as error:
         db.session.rollback()
-        print("Error al eliminar contenedor:", error)
+
+        print(
+            "Error al eliminar contenedor:",
+            error,
+            flush=True
+        )
 
         return jsonify({
             "ok": False,
@@ -314,7 +423,14 @@ def eliminar_contenedor(contenedor_id):
         }), 500
 
 
-@contenedores_bp.route("/api/fotografias/proxy", methods=["GET"])
+# ============================================================
+# PROXY DE FOTOGRAFÍAS PARA EXPORTACIÓN
+# ============================================================
+
+@contenedores_bp.route(
+    "/api/fotografias/proxy",
+    methods=["GET"]
+)
 def obtener_fotografia_exportacion():
     url = request.args.get("url", "").strip()
 
@@ -325,16 +441,22 @@ def obtener_fotografia_exportacion():
         }), 400
 
     try:
-        cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME")
+        cloud_name = os.getenv(
+            "CLOUDINARY_CLOUD_NAME",
+            ""
+        ).strip()
+
         parsed = urlparse(url)
 
-        # Permitir únicamente imágenes de nuestro Cloudinary.
         ruta_permitida = f"/{cloud_name}/image/upload/"
 
         if (
-            parsed.scheme != "https"
-            or parsed.netloc.lower() != "res.cloudinary.com"
-            or not cloud_name
+            not cloud_name
+            or parsed.scheme != "https"
+            or parsed.hostname != "res.cloudinary.com"
+            or parsed.port is not None
+            or parsed.username is not None
+            or parsed.password is not None
             or not parsed.path.startswith(ruta_permitida)
         ):
             return jsonify({
@@ -342,44 +464,88 @@ def obtener_fotografia_exportacion():
                 "error": "La dirección de la fotografía no está permitida."
             }), 400
 
-        respuesta = requests.get(
+        limite_bytes = 15 * 1024 * 1024
+
+        with requests.get(
             url,
+            stream=True,
             timeout=(5, 30),
             allow_redirects=False
-        )
+        ) as respuesta:
 
-        respuesta.raise_for_status()
+            if respuesta.status_code != 200:
+                return jsonify({
+                    "ok": False,
+                    "error": "No fue posible recuperar la fotografía."
+                }), 502
 
-        tipo = respuesta.headers.get(
-            "Content-Type", ""
-        ).split(";")[0].lower()
+            tipo = respuesta.headers.get(
+                "Content-Type",
+                ""
+            ).split(";")[0].lower()
 
-        if tipo not in ("image/jpeg", "image/png", "image/webp"):
-            return jsonify({
-                "ok": False,
-                "error": "El archivo solicitado no es una imagen válida."
-            }), 400
+            if tipo not in (
+                "image/jpeg",
+                "image/png",
+                "image/webp"
+            ):
+                return jsonify({
+                    "ok": False,
+                    "error": "El archivo solicitado no es una imagen válida."
+                }), 415
 
-        contenido = respuesta.content
+            longitud = respuesta.headers.get("Content-Length")
 
-        if len(contenido) > 15 * 1024 * 1024:
-            return jsonify({
-                "ok": False,
-                "error": "La fotografía supera el tamaño permitido."
-            }), 413
+            if longitud and int(longitud) > limite_bytes:
+                return jsonify({
+                    "ok": False,
+                    "error": "La fotografía supera el tamaño permitido."
+                }), 413
+
+            contenido = bytearray()
+
+            for fragmento in respuesta.iter_content(
+                chunk_size=64 * 1024
+            ):
+                if not fragmento:
+                    continue
+
+                contenido.extend(fragmento)
+
+                if len(contenido) > limite_bytes:
+                    return jsonify({
+                        "ok": False,
+                        "error": "La fotografía supera el tamaño permitido."
+                    }), 413
 
         return Response(
-            contenido,
+            bytes(contenido),
             mimetype=tipo,
             headers={
                 "Cache-Control": "private, max-age=3600"
             }
         )
 
+    except requests.RequestException as error:
+        print(
+            "Error al recuperar fotografía para Excel:",
+            error,
+            flush=True
+        )
+
+        return jsonify({
+            "ok": False,
+            "error": "No fue posible conectar con el servicio de fotografías."
+        }), 502
+
     except Exception as error:
-        print("Error al recuperar fotografía para Excel:", error)
+        print(
+            "Error inesperado en el proxy de fotografías:",
+            error,
+            flush=True
+        )
 
         return jsonify({
             "ok": False,
             "error": "No fue posible recuperar una fotografía."
-        }), 502
+        }), 500
