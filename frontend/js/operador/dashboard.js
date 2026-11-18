@@ -262,138 +262,172 @@ function inicializarPasoUno() {
             });
             return;
         }
-
         cambiarPaso(2);
     });
 }
 
 function inicializarPasoDos() {
-    $("#containerStatus").addEventListener("change", event => {
-        actualizarRequisitoSello(event.target.value);
-    });
+ let procesandoFotografias = false;
+ const botonContinuar = $("#toConfirmation");
+ const entradaGeneral = $("#evidenceInput");
+ const entradaSello = $("#sealEvidenceInput");
 
-    $("#evidenceInput").addEventListener("change", async event => {
-        try {
-            await agregarFotografias(event.target.files);
-        } catch (error) {
-            mostrarMensaje($("#evidenceMessage"), error.message);
-        }
+ async function procesarCargaFotografica(trabajo, mensajeError) {
+ if (procesandoFotografias) return;
 
-        event.target.value = "";
-    });
+ procesandoFotografias = true;
 
-    $("#sealEvidenceInput").addEventListener("change", async event => {
-        try {
-            await agregarFotografiaSello(event.target.files[0]);
-        } catch (error) {
-            mostrarMensaje($("#sealEvidenceMessage"), error.message);
-        }
+ botonContinuar.disabled = true;
+ botonContinuar.textContent = "Procesando fotografías...";
+ entradaGeneral.disabled = true;
+ entradaSello.disabled = true;
 
-        event.target.value = "";
-    });
+  try {
+  await trabajo();
+  } catch (error) {
+ mostrarMensaje(mensajeError, error.message);
+ } finally {
+ procesandoFotografias = false;
 
-    $("#backToData").addEventListener("click", () => cambiarPaso(1));
+ botonContinuar.disabled = false;
+ botonContinuar.textContent = "Continuar a confirmación →";
 
-    $("#toConfirmation").addEventListener("click", () => {
-        const datos = obtenerDatosFormulario();
+ entradaGeneral.disabled = false;
+ entradaSello.disabled = false;
+ }
+ }
 
-        if (!validarEvidencias()) {
-            mostrarMensaje(
-                $("#evidenceMessage"),
-                "Debes agregar al menos una fotografía general para continuar."
-            );
-            return;
-        }
+ $("#containerStatus").addEventListener("change", event => {
+ actualizarRequisitoSello(event.target.value);
+ });
 
-        if (!validarFotografiaSello(datos.estado)) {
-            const mensaje = $("#sealEvidenceMessage");
+ entradaGeneral.addEventListener("change", async event => {
+ const archivos = event.target.files;
 
-            mostrarMensaje(
-                mensaje,
-                "Debes agregar la fotografía del sello para el status seleccionado."
-            );
+await procesarCargaFotografica(
+() => agregarFotografias(archivos),
+$("#evidenceMessage")
+ );
 
-            mensaje.scrollIntoView({
-                behavior: "smooth",
-                block: "center"
-            });
+ event.target.value = "";
+ });
+ entradaSello.addEventListener("change", async event => {
 
-            return;
-        }
+    const archivo = event.target.files[0];
+ await procesarCargaFotografica(
+ () => agregarFotografiaSello(archivo),
+ $("#sealEvidenceMessage")
+ );
+ event.target.value = "";
+ });
 
-        mostrarConfirmacion(
-            datos,
-            obtenerFotografias(),
-            obtenerFotografiaSello()
-        );
+ $("#backToData").addEventListener("click", () => cambiarPaso(1));
 
-        cambiarPaso(3);
-    });
+ botonContinuar.addEventListener("click", () => {
+ if (procesandoFotografias) return;
+
+const datos = obtenerDatosFormulario();
+
+ if (!validarEvidencias()) {
+ mostrarMensaje(
+ $("#evidenceMessage"),
+ "Debes agregar al menos una fotografía general para continuar."
+ );
+ return;
+ }
+
+ if (!validarFotografiaSello(datos.estado)) {
+ const mensaje = $("#sealEvidenceMessage");
+
+mostrarMensaje(
+mensaje,
+"Debes agregar la fotografía del sello para el status seleccionado."
+ );
+ mensaje.scrollIntoView({
+ behavior: "smooth",
+ block: "center"
+ });
+ return;
+ }
+ mostrarConfirmacion(
+ datos,
+ obtenerFotografias(),
+ obtenerFotografiaSello()
+  );
+  cambiarPaso(3);
+  });
 }
 
 function inicializarPasoTres() {
     $("#backToEvidence").addEventListener("click", () => cambiarPaso(2));
 
-    $("#saveRegistration").addEventListener("click", async () => {
-        const boton = $("#saveRegistration");
-        const mensaje = $("#confirmationMessage");
+    
+$("#saveRegistration").addEventListener("click", async () => {
+    const boton = $("#saveRegistration");
+    const mensaje = $("#confirmationMessage");
 
-        const datos = obtenerDatosFormulario();
-        const fotografias = obtenerFotografias();
-        const fotografiaSello = obtenerFotografiaSello();
+    if (boton.disabled) return;
 
-        const validacion = validarDatosContenedor(datos);
-        const evidenciasValidas = validarEvidencias();
-        const selloValido = validarFotografiaSello(datos.estado);
+    const datos = obtenerDatosFormulario();
+    const fotografias = obtenerFotografias();
+    const fotografiaSello = obtenerFotografiaSello();
 
-        const errores = [...validacion.errores];
+    const validacion = validarDatosContenedor(datos);
+    const evidenciasValidas = validarEvidencias();
+    const selloValido = validarFotografiaSello(datos.estado);
 
-        if (!evidenciasValidas) {
-            errores.push("Agrega al menos una fotografía general.");
-        }
+    const errores = [...validacion.errores];
 
-        if (!selloValido) {
-            errores.push(
-                "Agrega la fotografía del sello para el status seleccionado."
-            );
-        }
+    if (!evidenciasValidas) {
+        errores.push("Agrega al menos una fotografía general.");
+    }
 
-        if (errores.length > 0) {
-            mostrarMensaje(mensaje, errores.join(" "));
-            return;
-        }
+    if (!selloValido) {
+        errores.push(
+            "Agrega la fotografía del sello para el status seleccionado."
+        );
+    }
 
-        boton.disabled = true;
-        boton.textContent = "Guardando...";
+    if (errores.length > 0) {
+        mostrarMensaje(mensaje, errores.join(" "));
+        return;
+    }
 
-        try {
-            await guardarRegistro(
-                datos,
-                fotografias,
-                fotografiaSello
-            );
+    boton.disabled = true;
+    boton.textContent = "Guardando...";
 
-            mostrarMensaje(
-                mensaje,
-                "¡Registro guardado correctamente!",
-                "success"
-            );
+    try {
+        await guardarRegistro(
+            datos,
+            fotografias,
+            fotografiaSello
+        );
 
-            await actualizarDashboard();
+        mostrarMensaje(
+            mensaje,
+            "¡Registro guardado correctamente!",
+            "success"
+        );
 
-            boton.textContent = "Registro guardado";
+        window.alert("El contenedor se registró correctamente.");
 
-            window.alert("El contenedor se registró correctamente.");
+        limpiarFormulario();
 
-            limpiarFormulario();
-            await cambiarVista("historial");
+        await actualizarDashboard();
 
-        } catch (error) {
-            mostrarMensaje(mensaje, error.message);
-            boton.disabled = false;
-            boton.textContent = "Confirmar y guardar";
-        }
-    });
+        await cambiarVista("historial");
+
+    } catch (error) {
+        console.error("Error durante el registro:", error);
+        mostrarMensaje(mensaje, error.message);
+
+    } finally {
+        // Siempre liberar el botón, haya éxito o error.
+        boton.disabled = false;
+        boton.textContent = "Confirmar y guardar";
+    }
+});
+
 }
 
 function inicializarDatosOperador() {
