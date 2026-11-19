@@ -427,14 +427,68 @@
                     </div>
 
                     <div class="card history-filters">
-                        <input id="historySearch" type="search" placeholder="Buscar por caja, carrier o ubicación...">
-                        <select id="historyStatus">
-                            <option value="">Todos los estados</option>
-                            <option value="Disponible">Vacío</option>
-                            <option value="Ocupado">Cargado Prod</option>
-                            <option value="Observado">Equipo vacío</option>
-                            <option value="En reparación">Con alguna Discrepancia</option>
-                        </select>
+
+    <div class="history-filter-field">
+        <label for="historyNumber">Número de caja</label>
+        <input
+            id="historyNumber"
+            type="search"
+            placeholder="Buscar número de caja..."
+        >
+    </div>
+
+    <div class="history-filter-field">
+        <label for="historyCarrier">Carrier</label>
+        <select id="historyCarrier">
+            <option value="">Todos los carriers</option>
+        </select>
+    </div>
+
+    <div class="history-filter-field">
+        <label for="historyStatus">Status</label>
+        <select id="historyStatus">
+            <option value="">Todos los estados</option>
+            <option value="Vacío">Vacío</option>
+            <option value="Cargado Prod">Cargado Prod</option>
+            <option value="Equipo vacío">Equipo vacío</option>
+            <option value="Dañado">Con alguna Discrepancia</option>
+        </select>
+            </div>
+
+                <div class="history-filter-field">
+                    <label for="historyLocation">Ubicación</label>
+                <select id="historyLocation">
+                    <option value="">Todas las ubicaciones</option>
+                </select>
+                </div>
+
+            <div class="history-filter-field">
+                <label for="historyYard">Patio</label>
+                <select id="historyYard">
+                    <option value="">Todos los patios</option>
+                </select>
+                </div>
+
+                <div class="history-filter-field">
+                    <label for="historyDateFrom">Fecha desde</label>
+                    <input id="historyDateFrom" type="date">
+                </div>
+
+                <div class="history-filter-field">
+                    <label for="historyDateTo">Fecha hasta</label>
+                    <input id="historyDateTo" type="date">
+                </div>
+
+                <div class="history-filter-actions">
+                    <button type="button" id="applyHistoryFilters" class="btn btn-primary">
+                        Filtrar
+                    </button>
+
+                    <button type="button" id="clearHistoryFilters" class="table-action">
+                        Limpiar filtros
+                    </button>
+                    </div>
+
                     </div>
 
                     <div class="card">
