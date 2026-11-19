@@ -220,9 +220,42 @@
                                 <small>Puedes corregir manualmente el resultado del OCR.</small>
                             </div>
 
-                            <div class="form-group">
-                                <label for="carrier">Carrier *</label>
-                                <input id="carrier" type="text" placeholder="Nombre del carrier">
+                            
+        <div class="form-group">
+                    <label for="carrier">Carrier *</label>
+                            <select id="carrier" required>
+                            <option value="">Selecciona un carrier</option>
+                            <option value="ALSA">ALSA</option>
+                            <option value="CHARGER">CHARGER</option>
+                            <option value="CONTENEDOR">CONTENEDOR</option>
+                            <option value="DX">DX</option>
+                            <option value="EXPRESS">EXPRESS</option>
+                            <option value="FRUEHAUF">FRUEHAUF</option>
+                            <option value="FULTRARENT">FULTRARENT</option>
+                            <option value="GREAT WAY">GREAT WAY</option>
+                            <option value="HUNTER">HUNTER</option>
+                            <option value="JULSA">JULSA</option>
+                            <option value="LOGISTIC ONE">LOGISTIC ONE</option>
+                            <option value="LTD">LTD</option>
+                            <option value="MCKINNEY">MCKINNEY</option>
+                            <option value="METROTRAILER">METROTRAILER</option>
+                            <option value="MILLENIAL">MILLENIAL</option>
+                            <option value="N/D">N/D</option>
+                            <option value="POINT">POINT</option>
+                            <option value="RT">RT</option>
+                            <option value="SARMW">SARMW</option>
+                            <option value="SCHNEIDER">SCHNEIDER</option>
+                            <option value="SER">SER</option>
+                            <option value="STAR">STAR</option>
+                            <option value="SUPERTRACK">SUPERTRACK</option>
+                            <option value="TB">TB</option>
+                            <option value="TEN">TEN</option>
+                            <option value="TRAYECTO">TRAYECTO</option>
+                            <option value="TSM">TSM</option>
+                            <option value="TWO WAY">TWO WAY</option>
+                            <option value="VOYAGER">VOYAGER</option>
+                            <option value="WHEELKING">WHEELKING</option>
+                            </select>
                             </div>
 
                             <div class="form-group">
@@ -232,10 +265,9 @@
                                     <option value="Vacío">Vacío</option>
                                     <option value="Cargado Prod">Cargado Prod</option>
                                     <option value="Equipo vacío">Equipo vacío</option>
-                                    <option value="Dañado">Dañado</option>
+                                    <option value="Dañado">Con alguna Discrepancia</option>
                                 </select>
                             </div>
-
                             
 <div class="form-group">
     <label for="yard">Patio *</label>
@@ -398,10 +430,10 @@
                         <input id="historySearch" type="search" placeholder="Buscar por caja, carrier o ubicación...">
                         <select id="historyStatus">
                             <option value="">Todos los estados</option>
-                            <option value="Disponible">Disponible</option>
-                            <option value="Ocupado">Ocupado</option>
-                            <option value="Observado">Observado</option>
-                            <option value="En reparación">En reparación</option>
+                            <option value="Disponible">Vacío</option>
+                            <option value="Ocupado">Cargado Prod</option>
+                            <option value="Observado">Equipo vacío</option>
+                            <option value="En reparación">Con alguna Discrepancia</option>
                         </select>
                     </div>
 
