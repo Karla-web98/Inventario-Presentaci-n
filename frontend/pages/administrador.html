@@ -369,174 +369,121 @@
 
             </section>
 
+            
+<!-- INVENTARIO -->
+<section id="view-inventario" class="admin-view">
+
+    <div class="admin-page-heading">
+        <div>
+            <h2>Inventario</h2>
+            <p>Consulta y administra las cajas registradas.</p>
+        </div>
+    </div>
+
+    <!-- FILTROS -->
+    <div class="admin-filters">
+
+        <input
+            type="search"
+            id="inventorySearch"
+            placeholder="Buscar número de caja..."
+        >
+
+        <select id="inventoryCarrierFilter">
+            <option value="">Todos los carriers</option>
+        </select>
+
+        <select id="inventoryStatusFilter">
+            <option value="">Todos los estados</option>
+            <option value="vacio">Vacío</option>
+            <option value="cargado prod">Cargado Prod</option>
+            <option value="equipo vacio">Equipo vacío</option>
+            <option value="danado">Dañado</option>
+        </select>
+
+        <select id="inventoryLocationFilter">
+            <option value="">Todas las ubicaciones</option>
+        </select>
+
+        <select id="inventoryPatioFilter">
+            <option value="">Todos los patios</option>
+        </select>
+
+        <div class="inventory-date-filter">
+            <label for="inventoryDateFrom">Desde</label>
+            <input type="date" id="inventoryDateFrom">
+        </div>
+
+        <div class="inventory-date-filter">
+            <label for="inventoryDateTo">Hasta</label>
+            <input type="date" id="inventoryDateTo">
+        </div>
+
+        <button
+            type="button"
+            id="applyInventoryFilters"
+            class="btn btn-primary"
+        >
+            Filtrar
+        </button>
+
+        <button
+            type="button"
+            id="clearInventoryFilters"
+            class="btn btn-secondary"
+        >
+            Limpiar
+        </button>
+
+    </div>
+
+    <!-- TABLA -->
+    <div class="admin-table-card">
+
+        <div class="admin-table-wrapper">
+
+            <table class="admin-table">
+
+                <thead>
+                    <tr>
+                        <th>CAJA</th>
+                        <th>CARRIER</th>
+                        <th>STATUS</th>
+                        <th>UBICACIÓN</th>
+                        <th>SPOT</th>
+                        <th>PATIO</th>
+                        <th>FECHA</th>
+                        <th>ACCIÓN</th>
+                    </tr>
+                </thead>
+
+                <tbody id="inventoryTable">
+                    <tr>
+                        <td colspan="8" class="admin-empty">
+                            No hay registros.
+                        </td>
+                    </tr>
+                </tbody>
+
+            </table>
+
+        </div>
+
+    </div>
 
+    <!-- PAGINACIÓN: DEBE ESTAR DEBAJO DE LA TABLA -->
+    <div id="inventoryPagination"></div>
 
-            <!-- INVENTARIO -->
-
-            <section
-
-                id="view-inventario"
-
-                class="admin-view"
-
-            >
-
-
-
-                <div class="admin-page-heading">
-
-                    <div>
-
-                        <h2>Inventario</h2>
-
-
-
-                        <p>
-
-                            Consulta y administra las cajas registradas.
-
-                        </p>
-
-                    </div>
-
-                </div>
-
-
-
-                <div class="admin-filters">
-
-
-
-                    <input
-
-                        type="search"
-
-                        id="inventorySearch"
-
-                        placeholder="Buscar por número de caja..."
-
-                    >
-
-
-
-                    <select id="inventoryStatusFilter">
-
-                        <option value="">Todos los estados</option>
-
-                        <option value="vacio">Vacío</option>
-
-                        <option value="cargado prod">Cargado Prod</option>
-
-                        <option value="equipo vacio">Equipo vacío</option>
-
-                        <option value="danado">Dañado</option>
-
-                    </select>
-
-
-
-                    <select id="inventoryPatioFilter">
-
-                        <option value="">Todos los patios</option>
-
-                        <option value="T-REX">T-REX</option>
-
-                        <option value="FÓSIL">FÓSIL</option>
-
-                    </select>
-
-
-
-                </div>
-
-
-
-                <div class="admin-table-card">
-
-                    <div class="admin-table-wrapper">
-
-
-
-                        <table class="admin-table">
-
-
-
-                            <thead>
-
-                                <tr>
-
-                                    <th>CAJA</th>
-
-                                    <th>CARRIER</th>
-
-                                    <th>STATUS</th>
-
-                                    <th>UBICACIÓN</th>
-
-                                    <th>SPOT</th>
-
-                                    <th>PATIO</th>
-
-                                    <th>FECHA</th>
-
-                                    <th>ACCIÓN</th>
-
-                                </tr>
-
-                            </thead>
-
-
-
-                            <tbody id="inventoryTable">
-
-                                <tr>
-
-                                    <td colspan="8" class="admin-empty">
-
-                                        No hay registros.
-
-                                    </td>
-
-                                </tr>
-
-                            </tbody>
-
-
-
-                        </table>
-
-
-
-                    </div>
-
-                </div>
-
-
-
-            </section>
-
-
+</section>
 
             <!-- HISTÓRICO -->
-
             <section
-
                 id="view-historico"
-
                 class="admin-view"
-
             >
-
-
-
                 <div class="admin-page-heading">
-
                     <div>
-
                         <h2>Histórico</h2>
-
-
-
                         <p>
 
                             Consulta el historial de registros
@@ -544,25 +491,12 @@
                             realizados en el sistema.
 
                         </p>
-
                     </div>
-
                 </div>
-
-
-
                 <div class="admin-table-card">
-
                     <div class="admin-table-wrapper">
-
-
-
                         <table class="admin-table">
-
-
-
                             <thead>
-
                                 <tr>
 
                                     <th>CAJA</th>
@@ -574,39 +508,20 @@
                                     <th>FECHA</th>
 
                                     <th>HORA</th>
-
                                 </tr>
-
                             </thead>
-
-
-
                             <tbody id="historyTable">
-
                                 <tr>
-
                                     <td colspan="5" class="admin-empty">
 
                                         No hay eventos registrados.
 
                                     </td>
-
                                 </tr>
-
                             </tbody>
-
-
-
                         </table>
-
-
-
                     </div>
-
                 </div>
-
-
-
             </section>
 
 
@@ -1020,12 +935,12 @@
 
     </article>
 
-</div>    
+</div>
 
+</section>
+<!-- FIN DE REPORTES -->
 
-
-    <!-- DETALLE DEL CONTENEDOR -->
-
+<!-- DETALLE DEL CONTENEDOR -->
             <section
 
                 id="view-detalle"

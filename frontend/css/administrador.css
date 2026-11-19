@@ -1474,3 +1474,81 @@ body.admin-image-modal-open {
         font-size: 20px;
     }
 }
+
+
+/* =========================================
+   PAGINACIÓN DEL INVENTARIO
+========================================= */
+
+#inventoryPagination {
+    display: block;
+    width: 100%;
+    margin-top: 18px;
+    margin-bottom: 24px;
+}
+
+#inventoryPagination.hidden {
+    display: none;
+}
+
+#inventoryPagination .history-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    width: 100%;
+    padding: 14px 18px;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    box-sizing: border-box;
+}
+
+#inventoryPagination .history-pagination-info {
+    color: #64748b;
+    font-size: 13px;
+}
+
+#inventoryPagination .history-pagination-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+#inventoryPagination .history-page-number {
+    color: #334155;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+#inventoryPagination .history-page-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border: 1px solid #dbe3ef;
+    border-radius: 8px;
+    background: #ffffff;
+    color: #2563eb;
+    font-size: 17px;
+    cursor: pointer;
+}
+
+#inventoryPagination .history-page-button:hover:not(:disabled) {
+    background: #eff6ff;
+    border-color: #2563eb;
+}
+
+#inventoryPagination .history-page-button:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+@media (max-width: 600px) {
+    #inventoryPagination .history-pagination {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}

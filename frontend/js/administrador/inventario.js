@@ -10,6 +10,15 @@ import {
 } from "../api/contenedores.js";
 
 // =========================================================
+// ESTADO DEL INVENTARIO
+// =========================================================
+
+let registrosInventario = [];
+let paginaActual = 1;
+
+const REGISTROS_POR_PAGINA = 15;
+
+// =========================================================
 // OBTENER INVENTARIO DEL SERVIDOR
 // =========================================================
 
@@ -170,44 +179,94 @@ function obtenerClaseEstadoInventario(estado) {
     return "";
 }
 
+
 // =========================================================
-// FILTROS DE PATIO
+// ACTUALIZAR FILTROS DINÁMICOS
 // =========================================================
 
-function actualizarFiltroPatios(registros) {
-    const filtro = document.querySelector(
-        "#inventoryPatioFilter"
-    );
+function actualizarFiltroInventario(selector, registros, obtenerDato, textoInicial) {
+    const filtro = document.querySelector(selector);
 
-    if (!filtro) {
-        return;
-    }
+    if (!filtro) return;
 
-    const patioActual = filtro.value;
+    const valorActual = filtro.value;
 
-    const patios = [
+    const valores = [
         ...new Set(
             registros
-                .map(registro => obtenerPatioInventario(registro))
-                .filter(patio => patio !== "—")
+                .map(registro => obtenerDato(registro))
+                .filter(valor => valor !== "—")
+                .map(valor => String(valor).trim())
+                .filter(Boolean)
         )
-    ].sort((a, b) =>
-        String(a).localeCompare(String(b), "es")
-    );
+    ].sort((a, b) => a.localeCompare(b, "es"));
 
     filtro.innerHTML = `
-        <option value="">Todos los patios</option>
-
-        ${patios.map(patio => `
-            <option value="${escaparInventario(patio)}">
-                ${escaparInventario(patio)}
+        <option value="">${textoInicial}</option>
+        ${valores.map(valor => `
+            <option value="${escaparInventario(valor)}">
+                ${escaparInventario(valor)}
             </option>
         `).join("")}
     `;
 
-    if (patios.includes(patioActual)) {
-        filtro.value = patioActual;
+    if (valores.includes(valorActual)) {
+        filtro.value = valorActual;
     }
+}
+
+function actualizarFiltrosInventario() {
+    actualizarFiltroInventario(
+        "#inventoryCarrierFilter",
+        registrosInventario,
+        obtenerCarrierInventario,
+        "Todos los carriers"
+    );
+
+    actualizarFiltroInventario(
+        "#inventoryLocationFilter",
+        registrosInventario,
+        obtenerUbicacionInventario,
+        "Todas las ubicaciones"
+    );
+
+    actualizarFiltroInventario(
+        "#inventoryPatioFilter",
+        registrosInventario,
+        obtenerPatioInventario,
+        "Todos los patios"
+    );
+}
+
+// =========================================================
+// NORMALIZAR FECHAS
+// =========================================================
+
+function obtenerFechaISOInventario(registro) {
+    const fechaRegistro = String(
+        registro.fecha || registro.fechaRegistro ||
+        registro.fecha_registro || registro.createdAt || ""
+    ).trim();
+
+    const formatoMX = fechaRegistro.match(
+        /^(\d{1,2})\/(\d{1,2})\/(\d{4})/
+    );
+
+    if (formatoMX) {
+        const [, dia, mes, anio] = formatoMX;
+
+        return `${anio}-${mes.padStart(2, "0")}-${dia.padStart(2, "0")}`;
+    }
+
+    const formatoISO = fechaRegistro.match(
+        /^(\d{4})-(\d{2})-(\d{2})/
+    );
+
+    if (formatoISO) {
+        return `${formatoISO[1]}-${formatoISO[2]}-${formatoISO[3]}`;
+    }
+
+    return "";
 }
 
 // =========================================================
@@ -215,61 +274,61 @@ function actualizarFiltroPatios(registros) {
 // =========================================================
 
 function filtrarInventario(registros) {
-    const busqueda = normalizarInventario(
+    const numero = normalizarInventario(
         document.querySelector("#inventorySearch")?.value || ""
+    );
+
+    const carrier = normalizarInventario(
+        document.querySelector("#inventoryCarrierFilter")?.value || ""
     );
 
     const estado = normalizarInventario(
         document.querySelector("#inventoryStatusFilter")?.value || ""
     );
 
+    const ubicacion = normalizarInventario(
+        document.querySelector("#inventoryLocationFilter")?.value || ""
+    );
+
     const patio = normalizarInventario(
         document.querySelector("#inventoryPatioFilter")?.value || ""
     );
 
+    const fechaDesde = document.querySelector("#inventoryDateFrom")?.value || "";
+    const fechaHasta = document.querySelector("#inventoryDateTo")?.value || "";
+
     return registros.filter(registro => {
-        const numero = normalizarInventario(
+        const coincideNumero = normalizarInventario(
             obtenerNumeroCaja(registro)
-        );
+        ).includes(numero);
 
-        const carrier = normalizarInventario(
-            obtenerCarrierInventario(registro)
-        );
+        const coincideCarrier = !carrier ||
+            normalizarInventario(obtenerCarrierInventario(registro)) === carrier;
 
-        const ubicacion = normalizarInventario(
-            obtenerUbicacionInventario(registro)
-        );
+        const coincideEstado = !estado ||
+            normalizarInventario(obtenerEstadoInventario(registro)) === estado;
 
-        const spot = normalizarInventario(
-            obtenerSpotInventario(registro)
-        );
+        const coincideUbicacion = !ubicacion ||
+            normalizarInventario(obtenerUbicacionInventario(registro)) === ubicacion;
 
-        const estadoRegistro = normalizarInventario(
-            obtenerEstadoInventario(registro)
-        );
+        const coincidePatio = !patio ||
+            normalizarInventario(obtenerPatioInventario(registro)) === patio;
 
-        const patioRegistro = normalizarInventario(
-            obtenerPatioInventario(registro)
-        );
+        const fecha = obtenerFechaISOInventario(registro);
 
-        const coincideBusqueda =
-            !busqueda ||
-            numero.includes(busqueda) ||
-            carrier.includes(busqueda) ||
-            ubicacion.includes(busqueda) ||
-            spot.includes(busqueda);
+        const coincideDesde = !fechaDesde ||
+            (fecha && fecha >= fechaDesde);
 
-        const coincideEstado =
-            !estado || estadoRegistro === estado;
+        const coincideHasta = !fechaHasta ||
+            (fecha && fecha <= fechaHasta);
 
-        const coincidePatio =
-            !patio || patioRegistro === patio;
-
-        return (
-            coincideBusqueda &&
+        return coincideNumero &&
+            coincideCarrier &&
             coincideEstado &&
-            coincidePatio
-        );
+            coincideUbicacion &&
+            coincidePatio &&
+            coincideDesde &&
+            coincideHasta;
     });
 }
 
@@ -293,7 +352,8 @@ function ordenarInventario(registros) {
 // MOSTRAR INVENTARIO
 // =========================================================
 
-async function mostrarInventario() {
+
+async function mostrarInventario(forzarActualizacion = true) {
     const tabla = document.querySelector("#inventoryTable");
 
     if (!tabla) {
@@ -301,16 +361,35 @@ async function mostrarInventario() {
         return;
     }
 
-    const registros = await obtenerInventario();
-
-    actualizarFiltroPatios(registros);
+    // Consultar servidor únicamente cuando sea necesario.
+    if (registrosInventario.length === 0 || forzarActualizacion) {
+        registrosInventario = await obtenerInventario();
+        actualizarFiltrosInventario();
+    }
 
     const filtrados = ordenarInventario(
-        filtrarInventario(registros)
+        filtrarInventario(registrosInventario)
     );
 
-    if (!filtrados.length) {
-        const mensaje = registros.length
+    // Calcular paginación.
+    const totalRegistros = filtrados.length;
+    const totalPaginas = Math.ceil(
+        totalRegistros / REGISTROS_POR_PAGINA
+    );
+
+    if (totalPaginas === 0) {
+        paginaActual = 1;
+    } else if (paginaActual > totalPaginas) {
+        paginaActual = totalPaginas;
+    }
+
+    const inicio = (paginaActual - 1) * REGISTROS_POR_PAGINA;
+    const fin = inicio + REGISTROS_POR_PAGINA;
+
+    const registrosPagina = filtrados.slice(inicio, fin);
+
+    if (!registrosPagina.length) {
+        const mensaje = registrosInventario.length
             ? "No se encontraron contenedores con esos filtros."
             : "Todavía no hay contenedores registrados.";
 
@@ -321,83 +400,106 @@ async function mostrarInventario() {
                 </td>
             </tr>
         `;
+    } else {
+        tabla.innerHTML = registrosPagina.map(registro => {
+            const numero = obtenerNumeroCaja(registro);
+            const carrier = obtenerCarrierInventario(registro);
+            const estado = obtenerEstadoInventario(registro);
+            const ubicacion = obtenerUbicacionInventario(registro);
+            const spot = obtenerSpotInventario(registro);
+            const patio = obtenerPatioInventario(registro);
+            const fecha = obtenerFechaInventario(registro);
 
+            const identificador = obtenerDatoInventario(registro, [
+                "id",
+                "uuid",
+                "registroId"
+            ]);
+
+            return `
+                <tr>
+                    <td><strong>${escaparInventario(numero)}</strong></td>
+                    <td>${escaparInventario(carrier)}</td>
+                    <td>
+                        <span class="badge ${obtenerClaseEstadoInventario(estado)}">
+                            ${escaparInventario(estado)}
+                        </span>
+                    </td>
+                    <td>${escaparInventario(ubicacion)}</td>
+                    <td>${escaparInventario(spot)}</td>
+                    <td>${escaparInventario(patio)}</td>
+                    <td>${formatearFechaInventario(fecha)}</td>
+                    <td>
+                        <div class="inventory-actions">
+                            <button
+                                type="button"
+                                class="btn btn-secondary"
+                                data-detail-id="${escaparInventario(identificador)}"
+                            >
+                                Ver detalle
+                            </button>
+
+                            <button
+                                type="button"
+                                class="btn-delete"
+                                data-delete-id="${escaparInventario(identificador)}"
+                            >
+                                Eliminar
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }).join("");
+    }
+
+    // Dibujar paginación.
+    const paginacion = document.querySelector("#inventoryPagination");
+
+    if (!paginacion) return;
+
+    if (totalPaginas <= 1) {
+        paginacion.innerHTML = "";
+        paginacion.classList.add("hidden");
         return;
     }
 
-    tabla.innerHTML = filtrados.map(registro => {
-        const numero = obtenerNumeroCaja(registro);
-        const carrier = obtenerCarrierInventario(registro);
-        const estado = obtenerEstadoInventario(registro);
-        const ubicacion = obtenerUbicacionInventario(registro);
-        const spot = obtenerSpotInventario(registro);
-        const patio = obtenerPatioInventario(registro);
-        const fecha = obtenerFechaInventario(registro);
+    paginacion.classList.remove("hidden");
 
-        const identificador = obtenerDatoInventario(registro, [
-            "id",
-            "uuid",
-            "registroId"
-        ]);
+    paginacion.innerHTML = `
+        <div class="history-pagination">
+            <span class="history-pagination-info">
+                Mostrando ${inicio + 1}–${Math.min(fin, totalRegistros)}
+                de ${totalRegistros} cajas
+            </span>
 
-        return `
-            <tr>
-                <td>
-                    <strong>
-                        ${escaparInventario(numero)}
-                    </strong>
-                </td>
+            <div class="history-pagination-controls">
+                <button
+                    type="button"
+                    class="history-page-button"
+                    data-inventory-page="${paginaActual - 1}"
+                    ${paginaActual === 1 ? "disabled" : ""}
+                    aria-label="Página anterior"
+                >
+                    &#8592;
+                </button>
 
-                <td>
-                    ${escaparInventario(carrier)}
-                </td>
+                <span class="history-page-number">
+                    Página ${paginaActual} de ${totalPaginas}
+                </span>
 
-                <td>
-                    <span class="badge ${obtenerClaseEstadoInventario(estado)}">
-                        ${escaparInventario(estado)}
-                    </span>
-                </td>
-
-                <td>
-                    ${escaparInventario(ubicacion)}
-                </td>
-
-                <td>
-                    ${escaparInventario(spot)}
-                </td>
-
-                <td>
-                    ${escaparInventario(patio)}
-                </td>
-
-                <td>
-                    ${formatearFechaInventario(fecha)}
-                </td>
-
-                <td>
-                    <div class="inventory-actions">
-
-                        <button
-                            type="button"
-                            class="btn btn-secondary"
-                            data-detail-id="${escaparInventario(identificador)}"
-                        >
-                            Ver detalle
-                        </button>
-
-                        <button
-                            type="button"
-                            class="btn-delete"
-                            data-delete-id="${escaparInventario(identificador)}"
-                        >
-                            Eliminar
-                        </button>
-
-                    </div>
-                </td>
-            </tr>
-        `;
-    }).join("");
+                <button
+                    type="button"
+                    class="history-page-button"
+                    data-inventory-page="${paginaActual + 1}"
+                    ${paginaActual === totalPaginas ? "disabled" : ""}
+                    aria-label="Página siguiente"
+                >
+                    &#8594;
+                </button>
+            </div>
+        </div>
+    `;
 }
 
 // =========================================================
@@ -714,7 +816,10 @@ async function eliminarRegistroInventario(id) {
 
         await eliminarContenedor(id);
 
-        await mostrarInventario();
+        registrosInventario = [];
+        paginaActual = 1;
+
+        await mostrarInventario(true);
 
         const detalle = document.querySelector("#containerDetail");
 
@@ -809,31 +914,74 @@ function configurarEventosInventario() {
     );
 
     // Actualizar tabla
-    const actualizarInventario = () => {
-        mostrarInventario().catch(error => {
-            console.error("Error al actualizar inventario:", error);
+    
+    // ---------------------------------------------
+    // FILTRAR Y LIMPIAR
+    // ---------------------------------------------
 
-            alert(
-                error.message ||
-                "No fue posible cargar el inventario."
-            );
+    const botonFiltrar = document.querySelector(
+        "#applyInventoryFilters"
+    );
+
+    const botonLimpiar = document.querySelector(
+        "#clearInventoryFilters"
+    );
+
+    const actualizarInventario = () => {
+        paginaActual = 1;
+
+        mostrarInventario(false).catch(error => {
+            console.error("Error al actualizar inventario:", error);
         });
     };
 
-    busqueda?.addEventListener(
-        "input",
+    botonFiltrar?.addEventListener(
+        "click",
         actualizarInventario
     );
 
-    estado?.addEventListener(
-        "change",
-        actualizarInventario
+    botonLimpiar?.addEventListener("click", () => {
+        const campos = [
+            "#inventorySearch",
+            "#inventoryCarrierFilter",
+            "#inventoryStatusFilter",
+            "#inventoryLocationFilter",
+            "#inventoryPatioFilter",
+            "#inventoryDateFrom",
+            "#inventoryDateTo"
+        ];
+
+        campos.forEach(selector => {
+            const campo = document.querySelector(selector);
+
+            if (campo) {
+                campo.value = "";
+            }
+        });
+
+        paginaActual = 1;
+        mostrarInventario(false);
+    });
+
+    // ---------------------------------------------
+    // PAGINACIÓN
+    // ---------------------------------------------
+
+    const paginacion = document.querySelector(
+        "#inventoryPagination"
     );
 
-    patio?.addEventListener(
-        "change",
-        actualizarInventario
-    );
+    paginacion?.addEventListener("click", evento => {
+        const boton = evento.target.closest(
+            "[data-inventory-page]"
+        );
+
+        if (!boton || boton.disabled) return;
+
+        paginaActual = Number(boton.dataset.inventoryPage);
+
+        mostrarInventario(false);
+    });
 
     // ---------------------------------------------
     // EVENTOS DE LA TABLA
