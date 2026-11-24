@@ -10,7 +10,10 @@ from backend.routes.cortes import cortes_bp
 from backend.routes.reportes import reportes_bp
 
 load_dotenv()
-from backend.database import inicializar_db, verificar_conexion
+
+from backend.database import inicializar_db, verificar_conexion, db
+from sqlalchemy import text
+import secrets
 import backend.models
 
 import os
@@ -191,6 +194,94 @@ def estado():
         "base_datos": conexion_db,
         "modo": "sincronizado" if conexion_db else "sin_conexion_db"
     })
+
+
+# ============================================================
+# DIAGNOSTICO TEMPORAL DE BASE DE DATOS
+# ============================================================
+
+@app.route("/api/diagnostico-db", methods=["GET"])
+def diagnostico_db():
+    token_esperado = os.getenv("DIAGNOSTICO_TOKEN", "")
+    token_recibido = request.args.get("token", "")
+
+    if (
+        not token_esperado
+        or not secrets.compare_digest(token_esperado, token_recibido)
+    ):
+        return jsonify({"ok": False, "error": "No autorizado"}), 403
+
+    try:
+        with db.engine.connect() as conexion:
+            tablas = conexion.execute(text("""
+                SELECT table_name
+                FROM information_schema.tables
+                WHERE table_schema = 'public'
+                ORDER BY table_name
+            """)).scalars().all()
+
+            indices = conexion.execute(text("""
+                SELECT indexname, indexdef
+                FROM pg_indexes
+                WHERE schemaname = 'public'
+                  AND tablename = 'contenedores'
+                ORDER BY indexname
+            """)).mappings().all()
+
+            restricciones = conexion.execute(text("""
+                SELECT conname, pg_get_constraintdef(oid) AS definicion
+                FROM pg_constraint
+                WHERE conrelid = to_regclass('public.contenedores')
+            """)).mappings().all()
+
+            columnas = conexion.execute(text("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'contenedores'
+                ORDER BY ordinal_position
+            """)).scalars().all()
+
+            sin_carrier = []
+            duplicados = []
+
+            if "numero" in columnas and "carrier" in columnas:
+                sin_carrier = conexion.execute(text("""
+                    SELECT id, numero
+                    FROM contenedores
+                    WHERE carrier IS NULL OR BTRIM(carrier) = ''
+                    ORDER BY numero
+                """)).mappings().all()
+
+                duplicados = conexion.execute(text("""
+                    SELECT
+                        UPPER(BTRIM(numero)) AS numero,
+                        UPPER(BTRIM(COALESCE(carrier, ''))) AS carrier,
+                        COUNT(*) AS cantidad
+                    FROM contenedores
+                    GROUP BY
+                        UPPER(BTRIM(numero)),
+                        UPPER(BTRIM(COALESCE(carrier, '')))
+                    HAVING COUNT(*) > 1
+                """)).mappings().all()
+
+        return jsonify({
+            "ok": True,
+            "tablas": tablas,
+            "columnas_contenedores": columnas,
+            "indices": [dict(x) for x in indices],
+            "restricciones": [dict(x) for x in restricciones],
+            "sin_carrier": [dict(x) for x in sin_carrier],
+            "duplicados_numero_carrier": [dict(x) for x in duplicados]
+        })
+
+    except Exception:
+        app.logger.exception("Error en diagnóstico temporal de PostgreSQL")
+        return jsonify({
+            "ok": False,
+            "error": "No fue posible completar el diagnóstico."
+        }), 500
+
 
 # ============================================================
 # ERROR 413
