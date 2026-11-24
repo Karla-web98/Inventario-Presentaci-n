@@ -11,8 +11,7 @@ from backend.routes.reportes import reportes_bp
 
 load_dotenv()
 
-from backend.database import inicializar_db, verificar_conexion, db
-from sqlalchemy import text
+from backend.database import inicializar_db, verificar_conexion
 import backend.models
 
 import os
@@ -177,66 +176,6 @@ def vista_operador():
 @app.route("/administrador")
 def vista_administrador():
     return send_from_directory(PAGES_DIR, "administrador.html")
-
-
-# ============================================================
-# DIAGNÓSTICO TEMPORAL DE POSTGRESQL
-# ============================================================
-
-@app.route("/api/diagnostico-db", methods=["GET"])
-def diagnostico_db():
-    try:
-        with app.app_context():
-            duplicados = db.session.execute(text("""
-                SELECT
-                    UPPER(BTRIM(numero)) AS numero,
-                    UPPER(BTRIM(carrier)) AS carrier,
-                    COUNT(*) AS cantidad
-                FROM public.contenedores
-                GROUP BY
-                    UPPER(BTRIM(numero)),
-                    UPPER(BTRIM(carrier))
-                HAVING COUNT(*) > 1
-            """)).mappings().all()
-
-            sin_carrier = db.session.execute(text("""
-                SELECT id, numero, carrier
-                FROM public.contenedores
-                WHERE carrier IS NULL
-                   OR BTRIM(carrier) = ''
-            """)).mappings().all()
-
-            indices = db.session.execute(text("""
-                SELECT indexname, indexdef
-                FROM pg_indexes
-                WHERE schemaname = 'public'
-                  AND tablename = 'contenedores'
-            """)).mappings().all()
-
-            return jsonify({
-                "ok": True,
-                "duplicados_numero_carrier": [
-                    dict(fila) for fila in duplicados
-                ],
-                "sin_carrier": [
-                    dict(fila) for fila in sin_carrier
-                ],
-                "indices": [
-                    dict(fila) for fila in indices
-                ]
-            })
-
-    except Exception as error:
-        db.session.rollback()
-
-        app.logger.exception(
-            "Error en diagnóstico temporal de PostgreSQL"
-        )
-
-        return jsonify({
-            "ok": False,
-            "error": str(error)
-        }), 500
 
 # ============================================================
 # ESTADO DEL SISTEMA
