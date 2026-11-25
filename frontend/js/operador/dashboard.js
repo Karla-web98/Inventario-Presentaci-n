@@ -1,6 +1,8 @@
 "use strict";
-
-import { listarContenedores } from "../api/contenedores.js";
+import {
+    listarContenedores,
+    verificarContenedor
+} from "../api/contenedores.js";
 import { procesarOCR } from "./registro/ocr.js";
 import {
     obtenerDatosFormulario,
@@ -29,7 +31,8 @@ import {
 const $ = selector => document.querySelector(selector);
 
 let pasoActual = 1;
-
+let temporizadorDuplicado = null;
+let solicitudDuplicado = 0;
 function mostrarMensaje(elemento, mensaje, tipo = "error") {
     elemento.textContent = mensaje;
     elemento.className = `message ${tipo}`;
@@ -103,6 +106,9 @@ async function actualizarDashboard() {
             (registro.fotografiaSello ? 1 : 0),
         0
     );
+
+    console.log("REGISTROS RECIBIDOS:", registros);
+    console.log("TOTAL DE REGISTROS:", registros.length);    
 
     $("#totalContainers").textContent = registros.length;
     $("#totalPhotos").textContent = totalFotos;
@@ -225,6 +231,9 @@ function inicializarOCR() {
             }
 
             $("#containerNumber").value = resultado.valor || "";
+            $("#containerNumber").dispatchEvent(
+                new Event("input", { bubbles: true })
+            );
 
             const confianza = resultado.confianza !== undefined
                 ? `${resultado.confianza}%`
@@ -248,8 +257,68 @@ function inicializarOCR() {
     });
 }
 
+
+function inicializarValidacionDuplicados() {
+    const campoNumero = $("#containerNumber");
+    const campoCarrier = $("#carrier");
+    const mensaje = $("#duplicateMessage");
+
+    const programarVerificacion = () => {
+        clearTimeout(temporizadorDuplicado);
+        solicitudDuplicado++;
+
+        mensaje.textContent = "";
+        mensaje.className = "message hidden";
+
+        const numero = campoNumero.value.trim().toUpperCase();
+        const carrier = campoCarrier.value.trim().toUpperCase();
+
+        if (
+            !/^[A-Z0-9]{4,20}$/.test(numero) ||
+            !carrier
+        ) {
+            return;
+        }
+
+        const solicitudActual = solicitudDuplicado;
+
+        temporizadorDuplicado = setTimeout(async () => {
+            try {
+                const duplicado = await verificarContenedor(
+                    numero,
+                    carrier
+                );
+
+                if (solicitudActual !== solicitudDuplicado) return;
+
+                if (
+                    campoNumero.value.trim().toUpperCase() !== numero ||
+                    campoCarrier.value.trim().toUpperCase() !== carrier
+                ) return;
+
+                if (duplicado) {
+                    mostrarMensaje(
+                        mensaje,
+                        "Contenedor duplicado. Ya existe ese número con el mismo Carrier."
+                    );
+                }
+
+            } catch (error) {
+                console.error(
+                    "Error al comprobar duplicados:",
+                    error
+                );
+            }
+        }, 350);
+    };
+
+    campoNumero.addEventListener("input", programarVerificacion);
+    campoCarrier.addEventListener("change", programarVerificacion);
+}
+
+
 function inicializarPasoUno() {
-    $("#toEvidence").addEventListener("click", () => {
+    $("#toEvidence").addEventListener("click", async () => {
         const datos = obtenerDatosFormulario();
         const validacion = validarDatosContenedor(datos);
 
@@ -262,7 +331,37 @@ function inicializarPasoUno() {
             });
             return;
         }
-        cambiarPaso(2);
+
+        clearTimeout(temporizadorDuplicado);
+        solicitudDuplicado++;
+
+        try {
+            const duplicado = await verificarContenedor(
+                datos.numero,
+                datos.carrier
+            );
+
+            if (duplicado) {
+                mostrarMensaje(
+                    $("#duplicateMessage"),
+                    "Contenedor duplicado. Ya existe ese número con el mismo Carrier."
+                );
+                return;
+            }
+
+            $("#duplicateMessage").textContent = "";
+            $("#duplicateMessage").className = "message hidden";
+
+            cambiarPaso(2);
+
+        } catch (error) {
+            mostrarMensaje(
+                $("#duplicateMessage"),
+                "No fue posible verificar el número y el Carrier. Intenta nuevamente."
+            );
+
+            console.error("Error al verificar contenedor:", error);
+        }
     });
 }
 
@@ -455,6 +554,7 @@ async function iniciarAplicacion() {
     inicializarNavegacion();
     inicializarPatioUbicacion();
     inicializarOCR();
+    inicializarValidacionDuplicados();
     inicializarPasoUno();
     inicializarPasoDos();
     actualizarRequisitoSello($("#containerStatus").value);

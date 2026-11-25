@@ -53,3 +53,26 @@ export async function eliminarContenedor(id) {
     );
     return await procesarRespuesta(response);
 }
+
+
+export async function verificarContenedor(numero, carrier) {
+    const numeroNormalizado = String(numero || "")
+        .trim()
+        .toUpperCase();
+
+    const carrierNormalizado = String(carrier || "")
+        .trim()
+        .toUpperCase();
+
+    const parametros = new URLSearchParams({
+        carrier: carrierNormalizado
+    });
+
+    const response = await fetch(
+        `${API_URL}/verificar/${encodeURIComponent(numeroNormalizado)}?${parametros}`
+    );
+
+    const resultado = await procesarRespuesta(response);
+
+    return resultado.existe;
+}

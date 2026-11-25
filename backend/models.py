@@ -1,4 +1,7 @@
+
 from datetime import datetime, timezone
+
+from sqlalchemy import Index, func
 
 from backend.database import db
 
@@ -11,7 +14,11 @@ class Contenedor(db.Model):
     __tablename__ = "contenedores"
 
     id = db.Column(db.String(100), primary_key=True)
-    numero = db.Column(db.String(30), nullable=False, unique=True, index=True)
+
+    numero = db.Column(
+        db.String(30),
+        nullable=False
+    )
 
     carrier = db.Column(db.String(120))
     estado = db.Column(db.String(50))
@@ -36,6 +43,15 @@ class Contenedor(db.Model):
         back_populates="contenedor",
         lazy=True,
         cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        Index(
+            "uq_contenedores_numero_carrier",
+            func.upper(func.btrim(numero)),
+            func.upper(func.btrim(carrier)),
+            unique=True
+        ),
     )
 
 

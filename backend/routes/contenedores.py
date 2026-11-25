@@ -9,7 +9,7 @@ import requests
 
 from urllib.parse import urlparse
 from flask import Blueprint, jsonify, request, Response
-from sqlalchemy import desc
+from sqlalchemy import desc, func
 
 from backend.database import db
 from backend.models import Contenedor, Fotografia
@@ -162,17 +162,62 @@ def listar_contenedores():
             ]
         })
 
-    except Exception:
+    except Exception as error:
         db.session.rollback()
 
         print(
-            "Error al consultar contenedores:",
+            f"Error al consultar contenedores: {error}",
             flush=True
         )
 
         return jsonify({
             "ok": False,
             "error": "No fue posible consultar el inventario."
+        }), 500
+
+
+# ============================================================
+# VERIFICAR DUPLICADO POR NÚMERO + CARRIER
+# ============================================================
+
+@contenedores_bp.route(
+    "/api/contenedores/verificar/<string:numero>",
+    methods=["GET"]
+)
+def verificar_contenedor(numero):
+    try:
+        numero = str(numero or "").strip().upper()
+        carrier = str(request.args.get("carrier") or "").strip().upper()
+
+        if not numero or not carrier:
+            return jsonify({
+                "ok": False,
+                "error": "El número y el Carrier son obligatorios."
+            }), 400
+
+        existe = db.session.query(
+            Contenedor.id
+        ).filter(
+            func.upper(func.trim(Contenedor.numero)) == numero,
+            func.upper(func.trim(Contenedor.carrier)) == carrier
+        ).first() is not None
+
+        return jsonify({
+            "ok": True,
+            "existe": existe
+        })
+
+    except Exception as error:
+        db.session.rollback()
+
+        print(
+            f"Error al verificar contenedor: {error}",
+            flush=True
+        )
+
+        return jsonify({
+            "ok": False,
+            "error": "No fue posible verificar el contenedor."
         }), 500
 
 
@@ -204,7 +249,9 @@ def registrar_contenedor():
                 "error": "Los datos del registro no son válidos."
             }), 400
 
+        # Normalizar número y Carrier.
         numero = str(datos.get("numero") or "").strip().upper()
+        carrier = str(datos.get("carrier") or "").strip().upper()
 
         medir("Datos recibidos")
 
@@ -214,10 +261,27 @@ def registrar_contenedor():
                 "error": "El número del contenedor es obligatorio."
             }), 400
 
-        if Contenedor.query.filter_by(numero=numero).first():
+        if not carrier:
             return jsonify({
                 "ok": False,
-                "error": "Ya existe un contenedor registrado con ese número."
+                "error": "El Carrier es obligatorio."
+            }), 400
+
+        # Comprobar duplicado por número + Carrier.
+        duplicado = db.session.query(
+            Contenedor.id
+        ).filter(
+            func.upper(func.trim(Contenedor.numero)) == numero,
+            func.upper(func.trim(Contenedor.carrier)) == carrier
+        ).first()
+
+        if duplicado:
+            return jsonify({
+                "ok": False,
+                "error": (
+                    "Ya existe un contenedor registrado "
+                    "con ese número y Carrier."
+                )
             }), 409
 
         fotos_generales = datos.get("fotografias") or []
@@ -259,7 +323,7 @@ def registrar_contenedor():
         registro = Contenedor(
             id=contenedor_id,
             numero=numero,
-            carrier=datos.get("carrier"),
+            carrier=carrier,
             estado=datos.get("estado"),
             ubicacion=datos.get("ubicacion"),
             patio=datos.get("patio"),
@@ -364,7 +428,10 @@ def registrar_contenedor():
         ):
             return jsonify({
                 "ok": False,
-                "error": "Ya existe un contenedor registrado con ese número."
+                "error": (
+                    "Ya existe un contenedor registrado "
+                    "con ese número y Carrier."
+                )
             }), 409
 
         return jsonify({
@@ -397,9 +464,8 @@ def eliminar_contenedor(contenedor_id):
                 "error": "El contenedor no existe."
             }), 404
 
-        # Eliminar registros de PostgreSQL.
-        # Las imágenes permanecen en Cloudinary para
-        # conservar las referencias de los cortes históricos.
+        # Las imágenes permanecen en Cloudinary para conservar
+        # las referencias de los cortes históricos.
         db.session.delete(registro)
         db.session.commit()
 
